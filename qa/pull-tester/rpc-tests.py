@@ -90,6 +90,7 @@ testScripts = [
     'p2p-fullblocktest.py',
     'blockchain.py',
     'disablewallet.py',
+    'smartfees.py',
 ]
 testScriptsExt = [
     'bip65-cltv.py',
@@ -107,7 +108,6 @@ testScriptsExt = [
     'receivedby.py',
 #    'rpcbind_test.py', #temporary, bug in libevent, see #6655
 #    'script_test.py', #used for manual comparison of 2 binaries
-    'smartfees.py',
     'maxblocksinflight.py',
     'invalidblockrequest.py',
     'p2p-acceptblock.py',
