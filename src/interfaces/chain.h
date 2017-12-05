@@ -358,7 +358,7 @@ public:
     //! Updates a setting in <datadir>/settings.json.
     //! Depending on the action returned by the update function, this will either
     //! update the setting in memory or write the updated settings to disk.
-    virtual bool updateRwSetting(const std::string& name, const SettingsUpdate& update_function) = 0;
+    virtual bool updateRwSetting(const std::string& name, SettingsUpdate update_function) = 0;
 
     //! Replace a setting in <datadir>/settings.json with a new value.
     virtual bool overwriteRwSetting(const std::string& name, common::SettingsValue& value, bool write = true) = 0;
@@ -400,7 +400,8 @@ public:
     //! Load saved state.
     virtual bool load() = 0;
 
-    //! Start client execution and provide a scheduler.
+    //! Start client execution and provide a scheduler. (Scheduler is
+    //! ignored if client is out-of-process).
     virtual void start(CScheduler& scheduler) = 0;
 
     //! Save state to disk.
