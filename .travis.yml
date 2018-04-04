@@ -20,6 +20,7 @@ env:
     - BASE_OUTDIR=$TRAVIS_BUILD_DIR/out
     - SDK_URL=https://bitcoincore.org/depends-sources/sdks
     - WINEDEBUG=fixme-all
+    - FUNCTIONAL_TEST_CMD="test/functional/test_runner.py --combinedlogslen=4000 --coverage --quiet"
   matrix:
 # ARM
     - HOST=arm-linux-gnueabihf PACKAGES="g++-arm-linux-gnueabihf python3-pip" DEP_OPTS="NO_QT=1" CHECK_DOC=1 GOAL="install" BITCOIN_CONFIG="--enable-glibc-back-compat --enable-reduce-exports"
@@ -80,7 +81,13 @@ script:
     - export LD_LIBRARY_PATH=$TRAVIS_BUILD_DIR/depends/$HOST/lib
     - if [ "$RUN_TESTS" = "true" ]; then travis_wait 50 make $MAKEJOBS check VERBOSE=1; fi
     - if [ "$TRAVIS_EVENT_TYPE" = "cron" ]; then extended="--extended --exclude feature_pruning,feature_dbcrash"; fi
-    - if [ "$RUN_TESTS" = "true" ]; then test/functional/test_runner.py --combinedlogslen=4000 --coverage --quiet ${extended}; fi
+    - if [ "$RUN_TESTS" = "true" ]; then 
+          if [ "$NEED_XVFB" = 1 ]; then 
+            BITCOIND=$TRAVIS_BUILD_DIR/src/qt/bitcoin-qt xvfb-run -a $FUNCTIONAL_TEST_CMD ${extended};
+          else 
+            $FUNCTIONAL_TEST_CMD ${extended}; 
+          fi 
+        fi
 after_script:
     - echo $TRAVIS_COMMIT_RANGE
     - echo $TRAVIS_COMMIT_LOG
