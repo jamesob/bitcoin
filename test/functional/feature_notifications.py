@@ -6,6 +6,7 @@
 import os
 
 from test_framework.test_framework import BitcoinTestFramework
+from test_framework import util
 from test_framework.util import assert_equal, wait_until, connect_nodes_bi
 
 class NotificationsTest(BitcoinTestFramework):
@@ -98,6 +99,7 @@ class NotificationsTest(BitcoinTestFramework):
         # restart node with notify on confirmations enabled
         self.restart_node(1, ["-walletnotifyconfirmations=%s" % n_confirmations,
                               "-walletnotify=echo %%s >> %s" % self.tx_filename])
+        util.connect_nodes_bi(self.nodes, 0, 1)
 
         # mine some more blocks (we should receive notifications on the ones above plus all but the last n_confirmations - 1 of these)
         generated_after_restart = self.nodes[1].generate(block_count + n_confirmations - 1)[:-n_confirmations + 1]
@@ -110,6 +112,63 @@ class NotificationsTest(BitcoinTestFramework):
             notified = f.read().splitlines()
 
             assert_equal(sorted(confirmed_txids), sorted(notified))
+
+        os.remove(self.tx_filename)
+        self.sync_all()
+
+        # Ensure -walletnotifyconfirmations behaves correctly when a transaction
+        # is introduced which is later reorg'd out.
+        #
+        # 1. Mine a block on node1 whose coinbase is added to be notified on after two
+        #    additional confirmations. (height = n + 0)
+        #
+        # 2. Reorg with a longer chain (height = n + 2) which makes the transaction
+        #    we introduced in (1) stale.
+        #
+        # 3. Assert that we haven't notified on the stale transaction.
+        #
+        self.log.info("Test correctness of -walletnotifyconfirmations during a reorg")
+        n_confirmations = 3
+        self.restart_node(0)
+        self.restart_node(1, ["-walletnotifyconfirmations=%s" % n_confirmations,
+                              "-walletnotify=echo %%s >> %s" % self.tx_filename])
+        # Leave nodes unconnected to enable a reorg from node0 onto node1 later.
+
+        # 1. Generate a block only seen by node1.
+        #
+        # We should receive a notification about the coinbase txn in this block
+        # after 2 more block discoveries.
+        #
+        [block_1_hash] = self.nodes[1].generate(1)
+        block_1 = self.nodes[1].getblock(block_1_hash)
+
+        [stale_txid] = [
+            t['txid'] for t in self.nodes[1].listtransactions("*", 1000)
+            if t['blockhash'] == block_1_hash
+        ]
+        assert_equal(self.nodes[1].getbestblockhash(), block_1_hash)
+
+        # 2. Now, trigger a reorg that will remove the block that
+        # `stale_txid` was introduced in.
+        #
+        fork_blockhashes = self.nodes[0].generate(3)
+        util.connect_nodes_bi(self.nodes, 0, 1)
+        util.sync_blocks(self.nodes, timeout=5)
+
+        # Ensure the reorg has happened.
+        for num in (0, 1):
+            assert_equal(self.nodes[num].getbestblockhash(), fork_blockhashes[-1])
+
+        with open(self.tx_filename, 'r') as f:
+            notified = f.read().splitlines()
+
+        # Ensure that block 1 has been reorg'd out of the main chain.
+        assert self.nodes[1].getblock(block_1_hash)['confirmations'] == -1
+
+        # 3. We should *not* have notified on `stale_txid` since it was reorg'd out.
+        assert stale_txid not in notified, (
+            "Should not have notified on stale transaction %s" % stale_txid)
+
 
 if __name__ == '__main__':
     NotificationsTest().main()
