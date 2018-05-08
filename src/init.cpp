@@ -291,6 +291,7 @@ void Shutdown()
     globalVerifyHandle.reset();
     ECC_Stop();
     LogPrintf("%s: done\n", __func__);
+    async_logging::Shutdown();
 }
 
 /**
@@ -808,7 +809,7 @@ void InitLogging()
     // Add newlines to the logfile to distinguish this execution from the last
     // one; called before console logging is set up, so this is only sent to
     // debug.log.
-    LogPrintf("\n\n\n\n\n");
+    g_logger->LogPrintStr("\n\n\n\n\n");
 
     g_logger->m_print_to_console = gArgs.GetBoolArg("-printtoconsole", !gArgs.GetBoolArg("-daemon", false));
     g_logger->m_log_timestamps = gArgs.GetBoolArg("-logtimestamps", DEFAULT_LOGTIMESTAMPS);

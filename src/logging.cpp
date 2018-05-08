@@ -5,6 +5,9 @@
 
 #include <logging.h>
 #include <utiltime.h>
+#include <ringbuffer.h>
+
+#include <mutex>
 
 const char * const DEFAULT_DEBUGLOGFILE = "debug.log";
 
@@ -270,4 +273,45 @@ void BCLog::Logger::ShrinkDebugFile()
     }
     else if (file != nullptr)
         fclose(file);
+}
+
+namespace async_logging {
+    using LogArgs = std::string;
+    RingBuffer<LogArgs, 1024> log_buffer;
+    std::unique_ptr<std::thread> flush_logs_thread;
+    std::once_flag flush_logs_thread_started;
+
+    static void ConsumeLogs()
+    {
+        std::unique_ptr<LogArgs> next_log_line;
+        while (next_log_line = log_buffer.PollForOne()) {
+            g_logger->LogPrintStr(*next_log_line);
+        }
+    }
+
+    void FlushAll()
+    {
+        for (LogArgs& s : log_buffer.PopAll()) {
+            g_logger->LogPrintStr(s);
+        }
+    }
+
+    void Queue(const std::string& str)
+    {
+        std::call_once(flush_logs_thread_started, [](){
+            flush_logs_thread.reset(new std::thread(ConsumeLogs));
+        });
+        log_buffer.PushBack(std::move(str));
+    }
+
+    void Shutdown()
+    {
+        if (flush_logs_thread) {
+            log_buffer.SignalStopWaiting();
+            FlushAll();
+            if (flush_logs_thread->joinable()) {
+                flush_logs_thread->join();
+            }
+        }
+    }
 }

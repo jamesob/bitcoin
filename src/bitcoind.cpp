@@ -191,5 +191,10 @@ int main(int argc, char* argv[])
     // Connect bitcoind signal handlers
     noui_connect();
 
-    return (AppInit(argc, argv) ? EXIT_SUCCESS : EXIT_FAILURE);
+    int status = AppInit(argc, argv);
+
+    if (!status) {
+        async_logging::Shutdown();
+    }
+    return (status ? EXIT_SUCCESS : EXIT_FAILURE);
 }
