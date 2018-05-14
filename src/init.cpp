@@ -290,6 +290,7 @@ void Shutdown()
     g_wallet_init_interface.Close();
     globalVerifyHandle.reset();
     ECC_Stop();
+    StopDebugLogFlushThread();
     LogPrintf("%s: done\n", __func__);
 }
 

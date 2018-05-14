@@ -59,7 +59,6 @@ namespace BCLog {
     class Logger
     {
     private:
-        FILE* m_fileout = nullptr;
         std::mutex m_file_mutex;
         std::list<std::string> m_msgs_before_open;
 
@@ -76,6 +75,7 @@ namespace BCLog {
         std::string LogTimestampStr(const std::string& str);
 
     public:
+        FILE* m_fileout = nullptr;
         bool m_print_to_console = false;
         bool m_print_to_file = false;
 
@@ -162,5 +162,7 @@ template<typename T, typename... Args> static inline void MarkUsed(const T& t, c
     } \
 } while(0)
 #endif
+
+void StopDebugLogFlushThread();
 
 #endif // BITCOIN_LOGGING_H
