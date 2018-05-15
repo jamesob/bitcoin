@@ -193,8 +193,5 @@ int main(int argc, char* argv[])
 
     int status = AppInit(argc, argv);
 
-    if (!status) {
-        async_logging::Shutdown();
-    }
     return (status ? EXIT_SUCCESS : EXIT_FAILURE);
 }

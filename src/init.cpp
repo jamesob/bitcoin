@@ -291,7 +291,6 @@ void Shutdown()
     globalVerifyHandle.reset();
     ECC_Stop();
     LogPrintf("%s: done\n", __func__);
-    async_logging::Shutdown();
 }
 
 /**
@@ -1216,6 +1215,8 @@ bool AppInitMain()
             return InitError(strprintf("Could not open debug log file %s",
                                        g_logger->m_file_path.string()));
         }
+
+        async_logging::Init();
     }
 
     if (!g_logger->m_log_timestamps)

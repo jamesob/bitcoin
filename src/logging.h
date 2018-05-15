@@ -93,6 +93,7 @@ namespace BCLog {
 
         bool OpenDebugLog();
         void ShrinkDebugFile();
+        void FlushFile();
 
         uint32_t GetCategoryMask() const { return m_categories.load(); }
 
@@ -152,7 +153,7 @@ template<typename T, typename... Args> static inline void MarkUsed(const T& t, c
             /* Original format string will have newline so don't add one here */ \
             _log_msg_ = "Error \"" + std::string(fmterr.what()) + "\" while formatting log message: " + FormatStringFromLogArgs(__VA_ARGS__); \
         } \
-        async_logging::Queue(_log_msg_); \
+        async_logging::Queue(std::move(_log_msg_));     \
     } \
 } while(0)
 
@@ -164,14 +165,10 @@ template<typename T, typename... Args> static inline void MarkUsed(const T& t, c
 #endif
 
 namespace async_logging {
+    void Init(void);
+
     /** Queue a log message to be written. */
-    void Queue(const std::string& str);
-
-    /** Write all log messages currently buffered. Used during shutdown. */
-    void FlushAll();
-
-    /** Shutdown the logging thread. */
-    void Shutdown();
+    void Queue(std::string&& str);
 }
 
 #endif // BITCOIN_LOGGING_H
