@@ -325,7 +325,7 @@ public:
         }
 
         // doesnt matter that much if we slightly over or undernotify
-        if(m_messages_written > 200)
+        if(m_messages_written > 800)
             m_cv.notify_one();
     }
 
@@ -354,12 +354,13 @@ public:
                     // drop the lock while flushing
                     reverse_lock<std::unique_lock<std::mutex>> release(l);
 
+                    g_logger->LogPrintStr(strprintf("flushing %d messages\n", size));
                     if(size > m_capacity) {
                         g_logger->LogPrintStr(strprintf("WARNING: %d log messages were discarded\n", size - m_capacity));
                     }
 
                     buffer::size_type n_to_flush = std::min(size, m_capacity);
-                    for(buffer::size_type i = size % m_capacity; n_to_flush > 0; ++i, --n_to_flush) {
+                    for(buffer::size_type i = (size > m_capacity) * (size % m_capacity); n_to_flush > 0; i = ((i + 1) % m_capacity), --n_to_flush) {
                         g_logger->LogPrintStr(std::move(m_buffer_flushing[i]));
                     }
                     g_logger->FlushFile();
