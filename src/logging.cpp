@@ -285,20 +285,47 @@ void BCLog::Logger::ShrinkDebugFile()
 class AsyncLogger
 {
 public:
-    AsyncLogger() : m_size(0) {}
+    AsyncLogger() : m_buffer_accumulating(m_capacity), m_buffer_flushing(m_capacity) {}
     ~AsyncLogger() {}
+
+    void Start()
+    {
+        std::unique_lock<std::mutex> l(m_lock);
+        if(!m_active) {
+            m_active = true;
+            m_flusher = std::thread(&AsyncLogger::Thread, this);
+        }
+    }
+
+    void Stop()
+    {
+        bool do_join = false;
+
+        {
+            std::unique_lock<std::mutex> l(m_lock);
+            if(m_active) {
+                m_active = false;
+                do_join = true;
+            }
+        }
+
+        if(do_join) {
+            m_cv.notify_one();
+            m_flusher.join();
+        }
+    }
 
     void Push(std::string&& line)
     {
         {
             std::unique_lock<std::mutex> l(m_lock);
 
-            m_buffer_accumulating[m_end()] = std::forward<std::string>(line);
-            m_size = std::min(m_size + 1, m_capacity);
+            m_buffer_accumulating[m_insert_pos()] = std::forward<std::string>(line);
+            ++m_messages_written;
         }
 
         // doesnt matter that much if we slightly over or undernotify
-        if(m_size > 100)
+        if(m_messages_written > 200)
             m_cv.notify_one();
     }
 
@@ -307,24 +334,32 @@ public:
         std::unique_lock<std::mutex> l(m_lock);
         while(true)
         {
+            if(!m_active) {
+                break;
+            }
+
             // if theres still a lot to do don't wait
-            if(m_size < 100) {
+            if(m_messages_written < 100) {
                 // sleep until there's a lot to do or some time has passed
                 m_cv.wait_for(l, std::chrono::milliseconds(100));
             }
 
-            if(m_size > 0) {
+            if(m_messages_written > 0) {
                 std::swap(m_buffer_accumulating, m_buffer_flushing);
 
-                unsigned int size = m_size;
-                m_size = 0;
+                buffer::size_type size = m_messages_written;
+                m_messages_written = 0;
 
                 {
                     // drop the lock while flushing
                     reverse_lock<std::unique_lock<std::mutex>> release(l);
 
-                    g_logger->LogPrintStr("flushing\n");
-                    for(size_t i = 0; i < size; ++i) {
+                    if(size > m_capacity) {
+                        g_logger->LogPrintStr(strprintf("WARNING: %d log messages were discarded\n", size - m_capacity));
+                    }
+
+                    buffer::size_type n_to_flush = std::min(size, m_capacity);
+                    for(buffer::size_type i = size % m_capacity; n_to_flush > 0; ++i, --n_to_flush) {
                         g_logger->LogPrintStr(std::move(m_buffer_flushing[i]));
                     }
                     g_logger->FlushFile();
@@ -334,25 +369,28 @@ public:
     }
 
 private:
+    bool m_active;
+
     std::mutex m_lock;
     std::condition_variable m_cv;
+    std::thread m_flusher;
 
     static constexpr long unsigned int m_capacity = 1024;
+    using buffer = std::vector<std::string>;
 
-    std::array<std::string, m_capacity> m_buffer_accumulating;
-    std::array<std::string, m_capacity> m_buffer_flushing;
+    buffer m_buffer_accumulating;
+    buffer m_buffer_flushing;
 
-    size_t m_size;
-    inline size_t m_end(){ return m_size; }
+    buffer::size_type m_messages_written;
+    inline buffer::size_type m_insert_pos(){ return m_messages_written % m_capacity; }
 };
 
 namespace async_logging {
     AsyncLogger log_buffer;
-    std::thread flush_logs_thread;
 
     void Init(void)
     {
-        flush_logs_thread = std::thread(&AsyncLogger::Thread, &log_buffer);
+        log_buffer.Start();
         LogPrintf("If you are seeing this message the async logger has started\n");
     }
 
