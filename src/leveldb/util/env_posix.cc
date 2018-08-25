@@ -366,6 +366,7 @@ class PosixEnv : public Env {
       if (s.ok()) {
         void* base = mmap(NULL, size, PROT_READ, MAP_SHARED, fd, 0);
         if (base != MAP_FAILED) {
+          madvise(base, size, MADV_DONTNEED);
           *result = new PosixMmapReadableFile(fname, base, size, &mmap_limit_);
         } else {
           s = IOError(fname, errno);
