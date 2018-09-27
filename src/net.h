@@ -631,7 +631,10 @@ public:
     CCriticalSection cs_vRecv;
 
     CCriticalSection cs_vProcessMsg;
+    //! Messages from this peer which are yet to be processed. Content is transferred over from
+    //! vRecvMsg in ThreadSocketHandler.
     std::list<CNetMessage> vProcessMsg;
+
     size_t nProcessQueueSize;
 
     CCriticalSection cs_sendProcessing;
