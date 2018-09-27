@@ -625,6 +625,7 @@ public:
     size_t nSendSize; // total size of all vSendMsg entries
     size_t nSendOffset; // offset inside the first vSendMsg already sent
     uint64_t nSendBytes;
+    //! Messages queued for sending to this peer. Populated in CConman::PushMessage().
     std::deque<std::vector<unsigned char>> vSendMsg;
     CCriticalSection cs_vSend;
     CCriticalSection cs_hSocket;
