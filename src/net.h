@@ -426,6 +426,7 @@ private:
     /** flag for waking the message processor. */
     bool fMsgProcWake;
 
+    /** Wakes up ThreadMessageHandler to process messages if dormant. */
     std::condition_variable condMsgProc;
     Mutex mutexMsgProc;
     std::atomic<bool> flagInterruptMsgProc;
