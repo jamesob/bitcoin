@@ -78,7 +78,8 @@ static_assert(INBOUND_PEER_TX_DELAY >= MAX_GETDATA_RANDOM_DELAY,
 "To preserve security, MAX_GETDATA_RANDOM_DELAY should not exceed INBOUND_PEER_DELAY");
 /** Limit to avoid sending big packets. Not used in processing incoming GETDATA for compatibility */
 static const unsigned int MAX_GETDATA_SZ = 1000;
-
+/** Maximum number of NOTFOUND notifications we'll push to other peers */
+static constexpr int32_t MAX_PEER_NOTFOUND = 100;
 
 struct COrphanTx {
     // When modifying, adapt the copy of this definition in tests/DoS_tests.
@@ -313,6 +314,15 @@ struct CNodeState {
      *   an adversary from using inbound connections to blind us to a
      *   transaction (InvBlock).
      *
+     *   When we call SendMessages() for a given peer, we'll first check to see
+     *   if any NOTFOUND transactions have been added to m_not_found -- we may
+     *   have a txid queued up for download sometime in the future, but as soon
+     *   as we've gotten a NOTFOUND from the peer we requested it from, we want
+     *   to try downloading from a backup peer that has announced it. So we
+     *   loop over the contents of m_not_found, and request any transactions
+     *   that have not yet been requested by others (within the
+     *   MAX_GETDATA_TX_DELAY window).
+     *
      *   When we call SendMessages() for a given peer,
      *   we will loop over the transactions in m_tx_process_time, looking
      *   at the transactions whose process_time <= nNow. We'll request each
@@ -342,6 +352,11 @@ struct CNodeState {
      *   peers.
      */
     struct TxDownloadState {
+        /* Notifications of NOTFOUND transactions (from other peers) which
+         * this peer has recently announced. txid->time in micros
+         */
+        std::list<uint256> m_not_found;
+
         /* Track when to attempt download of announced transactions (process
          * time in micros -> txid)
          */
@@ -388,7 +403,7 @@ limitedmap<uint256, int64_t> g_already_asked_for GUARDED_BY(cs_main)(MAX_INV_SZ)
 
 /** Map maintaining per-node state. */
 static std::map<NodeId, CNodeState> mapNodeState GUARDED_BY(cs_main);
-static std::set<NodeId> g_outbound_peers GUARDED_BY(cs_main);
+static std::vector<NodeId> g_outbound_peers GUARDED_BY(cs_main);
 
 static CNodeState *State(NodeId pnode) EXCLUSIVE_LOCKS_REQUIRED(cs_main) {
     std::map<NodeId, CNodeState>::iterator it = mapNodeState.find(pnode);
@@ -790,7 +805,7 @@ void PeerLogicValidation::InitializeNode(CNode *pnode) {
         LOCK(cs_main);
         mapNodeState.emplace_hint(mapNodeState.end(), std::piecewise_construct, std::forward_as_tuple(nodeid), std::forward_as_tuple(addr, std::move(addrName)));
         if (!pnode->fInbound) {
-            g_outbound_peers.insert(nodeid);
+            g_outbound_peers.push_back(nodeid);
         }
     }
     if(!pnode->fInbound) {
@@ -821,7 +836,21 @@ void PeerLogicValidation::FinalizeNode(NodeId nodeid, bool& fUpdateConnectionTim
     g_outbound_peers_with_protect_from_disconnect -= state->m_chain_sync.m_protect;
     assert(g_outbound_peers_with_protect_from_disconnect >= 0);
 
-    g_outbound_peers.erase(nodeid);
+    // Remove entry from g_outbound_peers, if present.
+    size_t peer_loc = g_outbound_peers.size();
+    for (size_t i=0; i<g_outbound_peers.size(); ++i) {
+        if (g_outbound_peers[i] == nodeid) {
+            peer_loc = i;
+        }
+    }
+    if (peer_loc != g_outbound_peers.size()) {
+        // We found the peer's location in the outbound peer set
+        if (peer_loc != g_outbound_peers.size()-1) {
+            // Swap this peer with the last one
+            g_outbound_peers[peer_loc] = g_outbound_peers.back();
+        }
+        g_outbound_peers.pop_back();
+    }
     mapNodeState.erase(nodeid);
 
     if (mapNodeState.empty()) {
@@ -3127,8 +3156,46 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
     }
 
     if (strCommand == NetMsgType::NOTFOUND) {
-        // We do not care about the NOTFOUND message, but logging an Unknown Command
-        // message would be undesirable as we transmit it ourselves.
+        // Remove the NOTFOUND transactions from the peer
+        LOCK(cs_main);
+        CNodeState *state = State(pfrom->GetId());
+        std::vector<CInv> vInv;
+        vRecv >> vInv;
+        if (vInv.size() <= MAX_INV_SZ) {
+            for (CInv &inv : vInv) {
+                if (inv.type == MSG_TX || inv.type == MSG_WITNESS_TX) {
+                    state->m_tx_download.m_tx_announced.erase(inv.hash);
+                    auto in_flight_it = state->m_tx_download.m_tx_in_flight.find(inv.hash);
+                    if (in_flight_it == state->m_tx_download.m_tx_in_flight.end()) {
+                        // Ignore NOTFOUND messages unless we requested the
+                        // transaction from the peer, to prevent misbehaving peers from
+                        // polluting the NOTFOUND queues or triggering multiple
+                        // concurrent downloads of the same transactions
+                        continue;
+                    }
+                    state->m_tx_download.m_tx_in_flight.erase(inv.hash);
+                    EraseTxRequest(inv.hash);
+                    // If we don't already have this transaction, check to see
+                    // if any of our outbound peers have offered it to us, and
+                    // if so signal them to try to request immediately. This avoids
+                    // waiting for the download timeout to expire before
+                    // re-requesting a transaction.
+                    if (!AlreadyHave(inv)) {
+                        for (auto it = g_outbound_peers.begin(); it != g_outbound_peers.end(); ++it) {
+                            if (*it == pfrom->GetId()) continue;
+                            CNodeState *state = State(*it);
+                            if (!state->m_tx_download.m_tx_announced.count(inv.hash)) continue;
+                            while (state->m_tx_download.m_not_found.size() >= MAX_PEER_NOTFOUND) {
+                                state->m_tx_download.m_not_found.erase(state->m_tx_download.m_not_found.begin());
+                            }
+                            state->m_tx_download.m_not_found.push_back(inv.hash);
+                        }
+                    }
+                }
+            }
+        } else {
+            // Misbehaving?
+        }
         return true;
     }
 
@@ -3925,6 +3992,28 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
         //
         // Message: getdata (non-blocks)
         //
+        // First check to see if there's anything in our notfound queue to request.
+        static uint64_t not_found_counter = 0;
+        ++not_found_counter;
+        if (!state.m_tx_download.m_not_found.empty()) {
+            // Check to see if it's our turn to drain the NOTFOUND queue.
+            // The idea is that we would like to randomly assign NOTFOUND
+            // transactions' next download request uniformly at random to our
+            // outbound peers, even though we don't necessarily know which ones
+            // will have the transaction available to download and not be up
+            // against their in-flight limit (or any other future restrictions
+            // we might impose).
+            // Our algorithm is to keep a global SendMessages() counter and
+            // every outbound peer gets to drain its notfound queue when the
+            // counter matches its location.
+            assert(g_outbound_peers.size() > 0);
+            if (g_outbound_peers[not_found_counter % g_outbound_peers.size()] == pto->GetId()) {
+                while (!state.m_tx_download.m_not_found.empty() && state.m_tx_download.m_tx_in_flight.size() < MAX_PEER_TX_IN_FLIGHT) {
+                    TryRequestTx(state, pto, state.m_tx_download.m_not_found.front(), vGetData, nNow, connman, msgMaker);
+                    state.m_tx_download.m_not_found.pop_front();
+                }
+            }
+        }
         auto& tx_process_time = state.m_tx_download.m_tx_process_time;
         while (!tx_process_time.empty() && tx_process_time.begin()->first <= nNow && state.m_tx_download.m_tx_in_flight.size() < MAX_PEER_TX_IN_FLIGHT) {
             const uint256& txid = tx_process_time.begin()->second;
