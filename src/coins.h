@@ -10,6 +10,7 @@
 #include <compressor.h>
 #include <core_memusage.h>
 #include <crypto/siphash.h>
+#include <logging.h>
 #include <memusage.h>
 #include <serialize.h>
 #include <uint256.h>
@@ -17,6 +18,7 @@
 #include <assert.h>
 #include <stdint.h>
 
+#include <functional>
 #include <unordered_map>
 
 /**
@@ -117,6 +119,7 @@ struct CCoinsCacheEntry
 
     CCoinsCacheEntry() : flags(0) {}
     explicit CCoinsCacheEntry(Coin&& coin_) : coin(std::move(coin_)), flags(0) {}
+    CCoinsCacheEntry(Coin&& coin_, unsigned char flag) : coin(std::move(coin_)), flags(flag) {}
 };
 
 typedef std::unordered_map<COutPoint, CCoinsCacheEntry, SaltedOutpointHasher> CCoinsMap;
@@ -310,5 +313,30 @@ void AddCoins(CCoinsViewCache& cache, const CTransaction& tx, int nHeight, bool 
 //! which is not found in the cache, it can cause up to MAX_OUTPUTS_PER_BLOCK
 //! lookups to database, so it should be used with care.
 const Coin& AccessByTxid(const CCoinsViewCache& cache, const uint256& txid);
+
+/**
+ * This is a minimally invasive approach to shutdown on LevelDB read errors from the
+ * chainstate, while keeping user interface out of the common library, which is shared
+ * between bitcoind, and bitcoin-qt and non-server tools.
+*/
+class CoinsViewErrorCatcher final : public CCoinsViewBacked
+{
+public:
+    typedef std::function<void()> Function;
+
+    explicit CoinsViewErrorCatcher(CCoinsView* view) : CCoinsViewBacked(view) {}
+
+    void AddReadErrCallback(const Function f) {
+      m_err_callbacks.push_back(f);
+    }
+
+    bool GetCoin(const COutPoint &outpoint, Coin &coin) const override;
+
+private:
+    /** A list of callbacks to execute upon leveldb read error. */
+    std::vector<CoinsViewErrorCatcher::Function> m_err_callbacks;
+
+};
+
 
 #endif // BITCOIN_COINS_H

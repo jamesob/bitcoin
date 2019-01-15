@@ -212,6 +212,12 @@ private:
 
     std::vector<unsigned char> CreateObfuscateKey() const;
 
+    //! Path to the leveldb data directory
+    fs::path m_path;
+
+    //! If true, destroy the database on destruction. Careful!
+    bool m_destroy_on_destruct{false};
+
 public:
     /**
      * @param[in] path        Location in the filesystem where leveldb data will be stored.
@@ -251,6 +257,15 @@ public:
             return false;
         }
         return true;
+    }
+
+    /**
+     * Call to signal that all on-disk files associated with
+     * this DB should be deleted when the object is destructed.
+     */
+    void MarkForDeletion()
+    {
+        m_destroy_on_destruct = true;
     }
 
     template <typename K, typename V>
@@ -346,7 +361,6 @@ public:
         leveldb::Slice slKey2(ssKey2.data(), ssKey2.size());
         pdb->CompactRange(&slKey1, &slKey2);
     }
-
 };
 
 #endif // BITCOIN_DBWRAPPER_H

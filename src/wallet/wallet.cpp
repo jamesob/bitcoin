@@ -561,8 +561,11 @@ bool CWallet::ChangeWalletPassphrase(const SecureString& strOldWalletPassphrase,
     return false;
 }
 
-void CWallet::ChainStateFlushed(const CBlockLocator& loc)
+void CWallet::ChainStateFlushed(const CChainState* chainstate, const CBlockLocator& loc)
 {
+    if (chainstate != ::ChainstateActive().get()) {
+        return;
+    }
     WalletBatch batch(*database);
     batch.WriteBestBlock(loc);
 }
@@ -1243,7 +1246,18 @@ void CWallet::TransactionRemovedFromMempool(const CTransactionRef &ptx) {
     }
 }
 
-void CWallet::BlockConnected(const CBlock& block, const std::vector<CTransactionRef>& vtxConflicted) {
+void CWallet::BlockConnected(
+    const CChainState* chainstate,
+    const CBlock& block,
+    const std::vector<CTransactionRef>& vtxConflicted)
+{
+    if (chainstate != ::ChainstateActive().get()) {
+        // Block connections which happen on a non-active chainstate (i.e. a
+        // background-validation chainstate) aren't relevant to us since
+        // we're operating off of a UTXO snapshot which is a more recent
+        // reflection of spentness.
+        return;
+    }
     const uint256& block_hash = block.GetHash();
     auto locked_chain = chain().lock();
     LOCK(cs_wallet);
@@ -1267,7 +1281,12 @@ void CWallet::BlockConnected(const CBlock& block, const std::vector<CTransaction
     m_last_block_processed = block_hash;
 }
 
-void CWallet::BlockDisconnected(const CBlock& block) {
+void CWallet::BlockDisconnected(const CChainState* chainstate, const CBlock& block) {
+    if (chainstate != ::ChainstateActive().get()) {
+        // We don't expect (or handle) the disconnection of any blocks on a
+        // background-validation chainstate.
+        return;
+    }
     auto locked_chain = chain().lock();
     LOCK(cs_wallet);
 
@@ -1284,7 +1303,7 @@ void CWallet::BlockUntilSyncedToCurrentChain() {
 
     {
         // Skip the queue-draining stuff if we know we're caught up with
-        // chainActive.Tip()...
+        // the active tip...
         // We could also take cs_wallet here, and call m_last_block_processed
         // protected by cs_wallet instead of cs_main, but as long as we need
         // cs_main here anyway, it's easier to just call it cs_main-protected.
@@ -4206,7 +4225,7 @@ std::shared_ptr<CWallet> CWallet::CreateWalletFromFile(interfaces::Chain& chain,
         }
 
         auto locked_chain = chain.assumeLocked();  // Temporary. Removed in upcoming lock cleanup
-        walletInstance->ChainStateFlushed(locked_chain->getTipLocator());
+        walletInstance->ChainStateFlushed(::ChainstateActive().get(), locked_chain->getTipLocator());
     } else if (wallet_creation_flags & WALLET_FLAG_DISABLE_PRIVATE_KEYS) {
         // Make it impossible to disable private keys after creation
         chain.initError(strprintf(_("Error loading %s: Private keys can only be disabled during creation"), walletFile));
@@ -4331,6 +4350,17 @@ std::shared_ptr<CWallet> CWallet::CreateWalletFromFile(interfaces::Chain& chain,
                 return nullptr;
             }
         }
+        // Otherwise refuse to rescan if we're operating on a snapshot and the
+        // rescan height is at or lower than the base of the snapshot.
+        //
+        else if (g_chainman.IsSnapshotActive() && !g_chainman.IsSnapshotValidated()) {
+            if (rescan_height <= g_chainman.SnapshotHeight()) {
+                InitError(_("Snapshot: last wallet synchronisation goes beyond the base "
+                            "of the snapshot. You need to wait for background validation of "
+                            "the snapshot to complete"));
+                return nullptr;
+            }
+        }
 
         chain.initMessage(_("Rescanning..."));
         walletInstance->WalletLogPrintf("Rescanning last %i blocks (from block %i)...\n", *tip_height - rescan_height, rescan_height);
@@ -4352,7 +4382,7 @@ std::shared_ptr<CWallet> CWallet::CreateWalletFromFile(interfaces::Chain& chain,
             }
         }
         walletInstance->WalletLogPrintf("Rescan completed in %15dms\n", GetTimeMillis() - nStart);
-        walletInstance->ChainStateFlushed(locked_chain->getTipLocator());
+        walletInstance->ChainStateFlushed(::ChainstateActive().get(), locked_chain->getTipLocator());
         walletInstance->database->IncrementUpdateCounter();
 
         // Restore wallet transaction metadata after -zapwallettxes=1

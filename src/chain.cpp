@@ -4,6 +4,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <chain.h>
+#include <logging.h>
 
 /**
  * CChain implementation
@@ -18,6 +19,20 @@ void CChain::SetTip(CBlockIndex *pindex) {
         vChain[pindex->nHeight] = pindex;
         pindex = pindex->pprev;
     }
+}
+
+void CChain::FakeNTx(unsigned int nChainTx) {
+    for (CBlockIndex* index : vChain) {
+        if (!index->nTx) {
+            index->nTx = 1;
+        }
+        index->nChainTx = index->pprev ? index->pprev->nChainTx + index->nTx : 1;
+    }
+
+    CBlockIndex* tip = Tip();
+    if (tip) {
+        tip->nChainTx = nChainTx;
+    };
 }
 
 CBlockLocator CChain::GetLocator(const CBlockIndex *pindex) const {

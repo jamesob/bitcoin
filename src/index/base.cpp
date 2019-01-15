@@ -63,9 +63,9 @@ bool BaseIndex::Init()
     if (locator.IsNull()) {
         m_best_block_index = nullptr;
     } else {
-        m_best_block_index = FindForkInGlobalIndex(chainActive, locator);
+        m_best_block_index = FindForkInGlobalIndex(::ChainActive(), locator);
     }
-    m_synced = m_best_block_index.load() == chainActive.Tip();
+    m_synced = m_best_block_index.load() == ::ChainActive().Tip();
     return true;
 }
 
@@ -74,15 +74,22 @@ static const CBlockIndex* NextSyncBlock(const CBlockIndex* pindex_prev) EXCLUSIV
     AssertLockHeld(cs_main);
 
     if (!pindex_prev) {
-        return chainActive.Genesis();
+        return ::ChainActive().Genesis();
     }
 
-    const CBlockIndex* pindex = chainActive.Next(pindex_prev);
+    // Always consult the most-work chain we have, whether or not it is based on
+    // an unvalidated snapshot. If we return a CBlockIndex for which we don't
+    // yet have block data (e.g. in the case of being in the middle of background
+    // snapshot validation), the `ReadBlockFromDisk()` check will fail in
+    // `ThreadSync()` and we will halt index building until next startup
+    // (when, presumably, we'll have more block data to proceed off of).
+    //
+    const CBlockIndex* pindex = ::ChainActive().Next(pindex_prev);
     if (pindex) {
         return pindex;
     }
 
-    return chainActive.Next(chainActive.FindFork(pindex_prev));
+    return ::ChainActive().Next(::ChainActive().FindFork(pindex_prev));
 }
 
 void BaseIndex::ThreadSync()
@@ -147,13 +154,14 @@ void BaseIndex::ThreadSync()
 bool BaseIndex::WriteBestBlock(const CBlockIndex* block_index)
 {
     LOCK(cs_main);
-    if (!GetDB().WriteBestBlock(chainActive.GetLocator(block_index))) {
+    if (!GetDB().WriteBestBlock(::ChainActive().GetLocator(block_index))) {
         return error("%s: Failed to write locator to disk", __func__);
     }
     return true;
 }
 
-void BaseIndex::BlockConnected(const std::shared_ptr<const CBlock>& block, const CBlockIndex* pindex,
+void BaseIndex::BlockConnected(const CChainState* chainstate,
+                               const std::shared_ptr<const CBlock>& block, const CBlockIndex* pindex,
                                const std::vector<CTransactionRef>& txn_conflicted)
 {
     if (!m_synced) {
@@ -191,7 +199,7 @@ void BaseIndex::BlockConnected(const std::shared_ptr<const CBlock>& block, const
     }
 }
 
-void BaseIndex::ChainStateFlushed(const CBlockLocator& locator)
+void BaseIndex::ChainStateFlushed(const CChainState* chainstate, const CBlockLocator& locator)
 {
     if (!m_synced) {
         return;
@@ -239,9 +247,9 @@ bool BaseIndex::BlockUntilSyncedToCurrentChain()
 
     {
         // Skip the queue-draining stuff if we know we're caught up with
-        // chainActive.Tip().
+        // ::ChainActive().Tip().
         LOCK(cs_main);
-        const CBlockIndex* chain_tip = chainActive.Tip();
+        const CBlockIndex* chain_tip = ::ChainActive().Tip();
         const CBlockIndex* best_block_index = m_best_block_index.load();
         if (best_block_index->GetAncestor(chain_tip->nHeight) == chain_tip) {
             return true;

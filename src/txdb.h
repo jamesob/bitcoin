@@ -9,6 +9,7 @@
 #include <coins.h>
 #include <dbwrapper.h>
 #include <chain.h>
+#include <fs.h>
 #include <primitives/block.h>
 
 #include <map>
@@ -46,7 +47,15 @@ class CCoinsViewDB final : public CCoinsView
 protected:
     CDBWrapper db;
 public:
-    explicit CCoinsViewDB(size_t nCacheSize, bool fMemory = false, bool fWipe = false);
+    /**
+     * @param[in] ldb_path    Location in the filesystem where leveldb data will be stored.
+     */
+    explicit CCoinsViewDB(
+            fs::path ldb_path,
+            size_t nCacheSize,
+            bool fMemory = false,
+            bool fWipe = false
+            );
 
     bool GetCoin(const COutPoint &outpoint, Coin &coin) const override;
     bool HaveCoin(const COutPoint &outpoint) const override;
@@ -58,6 +67,9 @@ public:
     //! Attempt to update from an older database format. Returns whether an error occurred.
     bool Upgrade();
     size_t EstimateSize() const override;
+
+    //! Mark the on-disk leveldb database for deletion.
+    void MarkForDeletion() { return db.MarkForDeletion(); }
 };
 
 /** Specialization of CCoinsViewCursor to iterate over a CCoinsViewDB */

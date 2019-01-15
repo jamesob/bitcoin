@@ -30,7 +30,7 @@ static std::shared_ptr<CBlock> PrepareBlock(const CScript& coinbase_scriptPubKey
             .CreateNewBlock(coinbase_scriptPubKey)
             ->block);
 
-    block->nTime = ::chainActive.Tip()->GetMedianTimePast() + 1;
+    block->nTime = g_chainman.ValidatedTip()->GetMedianTimePast() + 1;
     block->hashMerkleRoot = BlockMerkleRoot(*block);
 
     return block;
@@ -72,11 +72,12 @@ static void AssembleBlock(benchmark::State& state)
 
     boost::thread_group thread_group;
     CScheduler scheduler;
+
     {
         LOCK(cs_main);
         ::pblocktree.reset(new CBlockTreeDB(1 << 20, true));
-        ::pcoinsdbview.reset(new CCoinsViewDB(1 << 23, true));
-        ::pcoinsTip.reset(new CCoinsViewCache(pcoinsdbview.get()));
+        g_chainman.InitializeChainstate(
+            /* cache_size_bytes */ 1 << 23, /* in_memory */ true, /* should_wipe */ false);
     }
     {
         const CChainParams& chainparams = Params();
@@ -84,9 +85,9 @@ static void AssembleBlock(benchmark::State& state)
         GetMainSignals().RegisterBackgroundSignalScheduler(scheduler);
         LoadGenesisBlock(chainparams);
         CValidationState state;
-        ActivateBestChain(state, chainparams);
-        assert(::chainActive.Tip() != nullptr);
-        const bool witness_enabled{IsWitnessEnabled(::chainActive.Tip(), chainparams.GetConsensus())};
+        ::ChainstateActive()->ActivateBestChain(state, chainparams);
+        assert(g_chainman.ValidatedTip() != nullptr);
+        const bool witness_enabled{IsWitnessEnabled(g_chainman.ValidatedTip(), chainparams.GetConsensus())};
         assert(witness_enabled);
     }
 
