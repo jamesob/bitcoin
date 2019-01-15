@@ -117,6 +117,7 @@ static leveldb::Options GetOptions(size_t nCacheSize)
 CDBWrapper::CDBWrapper(const fs::path& path, size_t nCacheSize, bool fMemory, bool fWipe, bool obfuscate)
     : m_name(fs::basename(path))
 {
+    m_path = path;
     penv = nullptr;
     readoptions.verify_checksums = true;
     iteroptions.verify_checksums = true;
@@ -170,6 +171,17 @@ CDBWrapper::~CDBWrapper()
 {
     delete pdb;
     pdb = nullptr;
+
+    if (m_destroy_on_destruct) {
+        LogPrintf("Attempting to delete leveldb data at %s\n", m_path.string());
+        leveldb::Status result = leveldb::DestroyDB(m_path.string(), options);
+        dbwrapper_private::HandleError(result);
+
+        if (result.ok()) {
+            LogPrintf("Deleted leveldb data at %s\n", m_path.string());
+        }
+    }
+
     delete options.filter_policy;
     options.filter_policy = nullptr;
     delete options.info_log;

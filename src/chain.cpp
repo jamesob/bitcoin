@@ -20,6 +20,20 @@ void CChain::SetTip(CBlockIndex *pindex) {
     }
 }
 
+void CChain::FakeNTx(unsigned int nChainTx) {
+    for (CBlockIndex* index : vChain) {
+        if (!index->nTx) {
+            index->nTx = 1;
+        }
+        index->nChainTx = index->pprev ? index->pprev->nChainTx + index->nTx : 1;
+    }
+
+    CBlockIndex* tip = Tip();
+    if (tip) {
+        tip->nChainTx = nChainTx;
+    };
+}
+
 CBlockLocator CChain::GetLocator(const CBlockIndex *pindex) const {
     int nStep = 1;
     std::vector<uint256> vHave;

@@ -38,18 +38,19 @@ static void DuplicateInputs(benchmark::State& state)
     const CChainParams& chainparams = Params();
     {
         LOCK(cs_main);
+        ::UnloadBlockIndex();
         ::pblocktree.reset(new CBlockTreeDB(1 << 20, true));
-        ::pcoinsdbview.reset(new CCoinsViewDB(1 << 23, true));
-        ::pcoinsTip.reset(new CCoinsViewCache(pcoinsdbview.get()));
+        g_chainman.InitializeChainstate(
+            /* cache_size_bytes */ 1 << 23, /* in_memory */ true, /* should_wipe */ false);
     }
     {
         thread_group.create_thread(std::bind(&CScheduler::serviceQueue, &scheduler));
         GetMainSignals().RegisterBackgroundSignalScheduler(scheduler);
         LoadGenesisBlock(chainparams);
         CValidationState cvstate;
-        ActivateBestChain(cvstate, chainparams);
-        assert(::chainActive.Tip() != nullptr);
-        const bool witness_enabled{IsWitnessEnabled(::chainActive.Tip(), chainparams.GetConsensus())};
+        ::ChainstateActive()->ActivateBestChain(cvstate, chainparams);
+        assert(::ChainActive().Tip() != nullptr);
+        const bool witness_enabled{IsWitnessEnabled(::ChainActive().Tip(), chainparams.GetConsensus())};
         assert(witness_enabled);
     }
 
@@ -57,7 +58,7 @@ static void DuplicateInputs(benchmark::State& state)
     CMutableTransaction coinbaseTx{};
     CMutableTransaction naughtyTx{};
 
-    CBlockIndex* pindexPrev = ::chainActive.Tip();
+    CBlockIndex* pindexPrev = ::ChainActive().Tip();
     assert(pindexPrev != nullptr);
     block.nBits = GetNextWorkRequired(pindexPrev, &block, chainparams.GetConsensus());
     block.nNonce = 0;

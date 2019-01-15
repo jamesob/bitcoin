@@ -15,6 +15,7 @@
 #include <vector>
 
 class CBlock;
+class CChainState;
 class CFeeRate;
 class CRPCCommand;
 class CScheduler;
@@ -254,9 +255,12 @@ public:
         virtual ~Notifications() {}
         virtual void TransactionAddedToMempool(const CTransactionRef& tx) {}
         virtual void TransactionRemovedFromMempool(const CTransactionRef& ptx) {}
-        virtual void BlockConnected(const CBlock& block, const std::vector<CTransactionRef>& tx_conflicted) {}
-        virtual void BlockDisconnected(const CBlock& block) {}
-        virtual void ChainStateFlushed(const CBlockLocator& locator) {}
+        virtual void BlockConnected(
+            const CChainState* chainstate,
+            const CBlock& block,
+            const std::vector<CTransactionRef>& tx_conflicted) {}
+        virtual void BlockDisconnected(const CChainState* chainstate, const CBlock& block) {}
+        virtual void ChainStateFlushed(const CChainState* chainstate, const CBlockLocator& locator) {}
         virtual void ResendWalletTransactions(Lock& locked_chain, int64_t best_block_time) {}
     };
 
