@@ -749,7 +749,7 @@ void RequestTx(CNodeState* state, const uint256& txid, int64_t nNow) EXCLUSIVE_L
 // the transaction from the peer, and update the appropriate tx download state
 // (both the global state and the peer's state). Send a getdata message if the
 // get_data vector grows too large.
-void TryRequestTx(CNodeState &state, CNode *pto, const uint256 &txid, std::vector<CInv> &get_data, const int64_t nNow, CConnman *connman, const CNetMsgMaker& msg_maker)
+void TryRequestTx(CNodeState &state, CNode *pto, const uint256 &txid, std::vector<CInv> &get_data, const int64_t nNow, CConnman *connman, const CNetMsgMaker& msg_maker) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
 {
     CInv inv(MSG_TX | GetFetchFlags(pto), txid);
     if (!AlreadyHave(inv)) {
