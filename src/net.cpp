@@ -1950,6 +1950,7 @@ void CConnman::ThreadMessageHandler()
         }
 
         bool fMoreWork = false;
+        int outbound_selector = GetRandInt();
 
         for (CNode* pnode : vNodesCopy)
         {
@@ -1964,7 +1965,7 @@ void CConnman::ThreadMessageHandler()
             // Send messages
             {
                 LOCK(pnode->cs_sendProcessing);
-                m_msgproc->SendMessages(pnode);
+                m_msgproc->SendMessages(pnode, outbound_selector);
             }
 
             if (flagInterruptMsgProc)
@@ -1976,6 +1977,8 @@ void CConnman::ThreadMessageHandler()
             for (CNode* pnode : vNodesCopy)
                 pnode->Release();
         }
+
+        outbound_selector = GetRandInt()
 
         WAIT_LOCK(mutexMsgProc, lock);
         if (!fMoreWork) {

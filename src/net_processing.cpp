@@ -403,7 +403,7 @@ limitedmap<uint256, int64_t> g_already_asked_for GUARDED_BY(cs_main)(MAX_INV_SZ)
 
 /** Map maintaining per-node state. */
 static std::map<NodeId, CNodeState> mapNodeState GUARDED_BY(cs_main);
-static std::vector<NodeId> g_outbound_peers GUARDED_BY(cs_main);
+static std::set<NodeId> g_outbound_peers GUARDED_BY(cs_main);
 
 static CNodeState *State(NodeId pnode) EXCLUSIVE_LOCKS_REQUIRED(cs_main) {
     std::map<NodeId, CNodeState>::iterator it = mapNodeState.find(pnode);
@@ -805,7 +805,7 @@ void PeerLogicValidation::InitializeNode(CNode *pnode) {
         LOCK(cs_main);
         mapNodeState.emplace_hint(mapNodeState.end(), std::piecewise_construct, std::forward_as_tuple(nodeid), std::forward_as_tuple(addr, std::move(addrName)));
         if (!pnode->fInbound) {
-            g_outbound_peers.push_back(nodeid);
+            g_outbound_peers.insert(nodeid);
         }
     }
     if(!pnode->fInbound) {
@@ -836,21 +836,7 @@ void PeerLogicValidation::FinalizeNode(NodeId nodeid, bool& fUpdateConnectionTim
     g_outbound_peers_with_protect_from_disconnect -= state->m_chain_sync.m_protect;
     assert(g_outbound_peers_with_protect_from_disconnect >= 0);
 
-    // Remove entry from g_outbound_peers, if present.
-    size_t peer_loc = g_outbound_peers.size();
-    for (size_t i=0; i<g_outbound_peers.size(); ++i) {
-        if (g_outbound_peers[i] == nodeid) {
-            peer_loc = i;
-        }
-    }
-    if (peer_loc != g_outbound_peers.size()) {
-        // We found the peer's location in the outbound peer set
-        if (peer_loc != g_outbound_peers.size()-1) {
-            // Swap this peer with the last one
-            g_outbound_peers[peer_loc] = g_outbound_peers.back();
-        }
-        g_outbound_peers.pop_back();
-    }
+    g_outbound_peers.erase(nodeid);
     mapNodeState.erase(nodeid);
 
     if (mapNodeState.empty()) {
@@ -3181,9 +3167,9 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
                     // waiting for the download timeout to expire before
                     // re-requesting a transaction.
                     if (!AlreadyHave(inv)) {
-                        for (auto it = g_outbound_peers.begin(); it != g_outbound_peers.end(); ++it) {
-                            if (*it == pfrom->GetId()) continue;
-                            CNodeState *state = State(*it);
+                        for (NodeId& outbound_id : g_outbound_peers) {
+                            if (outbound_id == pfrom->GetId()) continue;
+                            CNodeState *state = State(outbound_id);
                             if (!state->m_tx_download.m_tx_announced.count(inv.hash)) continue;
                             while (state->m_tx_download.m_not_found.size() >= MAX_PEER_NOTFOUND) {
                                 state->m_tx_download.m_not_found.erase(state->m_tx_download.m_not_found.begin());
@@ -3512,7 +3498,7 @@ public:
 };
 }
 
-bool PeerLogicValidation::SendMessages(CNode* pto)
+bool PeerLogicValidation::SendMessages(CNode* pto, int outbound_selector)
 {
     const Consensus::Params& consensusParams = Params().GetConsensus();
     {
@@ -3995,6 +3981,7 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
         // First check to see if there's anything in our notfound queue to request.
         static uint64_t not_found_counter = 0;
         ++not_found_counter;
+
         if (!state.m_tx_download.m_not_found.empty()) {
             // Check to see if it's our turn to drain the NOTFOUND queue.
             // The idea is that we would like to randomly assign NOTFOUND
@@ -4007,7 +3994,17 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
             // every outbound peer gets to drain its notfound queue when the
             // counter matches its location.
             assert(g_outbound_peers.size() > 0);
-            if (g_outbound_peers[not_found_counter % g_outbound_peers.size()] == pto->GetId()) {
+
+            // Determine if we're sending to the peer that has been selected
+            // for this round of m_not_found processing. A different outbound
+            // peer is chosen uniformly randomly per iteration of
+            // `ThreadMessageHandler()`.
+            //
+            auto outbound_it = g_outbound_peers.begin();
+            std::advance(outbound_it, outbound_selector % g_outbound_peers.size());
+            bool am_i_selected = *outbound_it == pto->GetId();
+
+            if (am_i_selected) {
                 while (!state.m_tx_download.m_not_found.empty() && state.m_tx_download.m_tx_in_flight.size() < MAX_PEER_TX_IN_FLIGHT) {
                     TryRequestTx(state, pto, state.m_tx_download.m_not_found.front(), vGetData, nNow, connman, msgMaker);
                     state.m_tx_download.m_not_found.pop_front();
