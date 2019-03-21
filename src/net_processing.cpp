@@ -1357,7 +1357,7 @@ void static ProcessGetBlockData(CNode* pfrom, const CChainParams& chainparams, c
     }
     // Avoid leaking prune-height by never sending blocks below the NODE_NETWORK_LIMITED threshold
     if (send && !pfrom->fWhitelisted && (
-            (((pfrom->GetLocalServices() & NODE_NETWORK_LIMITED) == NODE_NETWORK_LIMITED) && ((pfrom->GetLocalServices() & NODE_NETWORK) != NODE_NETWORK) && (g_chainman.ValidatedTip()->nHeight - pindex->nHeight > (int)NODE_NETWORK_LIMITED_MIN_BLOCKS + 2 /* add two blocks buffer extension for possible races */) )
+            (((pfrom->GetLocalServices() & NODE_NETWORK_LIMITED) == NODE_NETWORK_LIMITED) && ((pfrom->GetLocalServices() & NODE_NETWORK) != NODE_NETWORK) && (::ChainActive().Tip()->nHeight - pindex->nHeight > (int)NODE_NETWORK_LIMITED_MIN_BLOCKS + 2 /* add two blocks buffer extension for possible races */) )
        )) {
         LogPrint(BCLog::NET, "Ignore block request below NODE_NETWORK_LIMITED threshold from peer=%d\n", pfrom->GetId());
 
@@ -1427,9 +1427,7 @@ void static ProcessGetBlockData(CNode* pfrom, const CChainParams& chainparams, c
                 // instead we respond with the full, non-compact block.
                 bool fPeerWantsWitness = State(pfrom->GetId())->fWantsCmpctWitness;
                 int nSendFlags = fPeerWantsWitness ? 0 : SERIALIZE_TRANSACTION_NO_WITNESS;
-                // Consult the ValidatedChain since we likely can't serve blocks
-                // from the snapshot chain, if in use.
-                if (CanDirectFetch(consensusParams) && pindex->nHeight >= g_chainman.ValidatedChain().Height() - MAX_CMPCTBLOCK_DEPTH) {
+                if (CanDirectFetch(consensusParams) && pindex->nHeight >= ::ChainActive().Height() - MAX_CMPCTBLOCK_DEPTH) {
                     if ((fPeerWantsWitness || !fWitnessesPresentInARecentCompactBlock) && a_recent_compact_block && a_recent_compact_block->header.GetHash() == pindex->GetBlockHash()) {
                         connman->PushMessage(pfrom, msgMaker.Make(nSendFlags, NetMsgType::CMPCTBLOCK, *a_recent_compact_block));
                     } else {
@@ -1449,9 +1447,7 @@ void static ProcessGetBlockData(CNode* pfrom, const CChainParams& chainparams, c
             // and we want it right after the last block so they don't
             // wait for other stuff first.
             std::vector<CInv> vInv;
-            // Use the ValidatedTip - we only share blocks from a chain that
-            // has been fully validated.
-            vInv.push_back(CInv(MSG_BLOCK, g_chainman.ValidatedTip()->GetBlockHash()));
+            vInv.push_back(CInv(MSG_BLOCK, ::ChainActive().Tip()->GetBlockHash()));
             connman->PushMessage(pfrom, msgMaker.Make(NetMsgType::INV, vInv));
             pfrom->hashContinue.SetNull();
         }
@@ -2245,9 +2241,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         }
 
         LOCK(cs_main);
-        // Use the validated chain here because otherwise we both don't want to serve data
-        // from an unvalidated tip and likely don't have any block data to serve.
-        const CChain& chain = g_chainman.ValidatedChain();
+        const CChain& chain = ::ChainActive();
 
         // Find the last block the caller has in the main chain
         const CBlockIndex* pindex = FindForkInGlobalIndex(chain, locator);
@@ -2302,9 +2296,6 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         }
 
         LOCK(cs_main);
-        // Use the validated chain here because otherwise we both don't want to serve data
-        // from an unvalidated tip and likely don't have any block data to serve.
-        const CChain& chain = g_chainman.ValidatedChain();
 
         const CBlockIndex* pindex = LookupBlockIndex(req.blockhash);
         if (!pindex || !(pindex->nStatus & BLOCK_HAVE_DATA)) {
@@ -2312,7 +2303,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
             return true;
         }
 
-        if (pindex->nHeight < chain.Height() - MAX_BLOCKTXN_DEPTH) {
+        if (pindex->nHeight < ::ChainActive().Height() - MAX_BLOCKTXN_DEPTH) {
             // If an older block is requested (should never happen in practice,
             // but can happen in tests) send a block response instead of a
             // blocktxn response. Sending a full block response instead of a
@@ -2350,9 +2341,6 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
 
         LOCK(cs_main);
 
-        // Only service data requests using a chain that we've fully validated.
-        const CChain& chain = g_chainman.ValidatedChain();
-
         if (::ChainstateActive()->IsInitialBlockDownload() && !pfrom->fWhitelisted) {
             LogPrint(BCLog::NET, "Ignoring getheaders from peer=%d because node is in initial block download\n", pfrom->GetId());
             return true;
@@ -2376,23 +2364,23 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         else
         {
             // Find the last block the caller has in the main chain
-            pindex = FindForkInGlobalIndex(chain, locator);
+            pindex = FindForkInGlobalIndex(::ChainActive(), locator);
             if (pindex)
-                pindex = chain.Next(pindex);
+                pindex = ::ChainActive().Next(pindex);
         }
 
         // we must use CBlocks, as CBlockHeaders won't include the 0x00 nTx count at the end
         std::vector<CBlock> vHeaders;
         int nLimit = MAX_HEADERS_RESULTS;
         LogPrint(BCLog::NET, "getheaders %d to %s from peer=%d\n", (pindex ? pindex->nHeight : -1), hashStop.IsNull() ? "end" : hashStop.ToString(), pfrom->GetId());
-        for (; pindex; pindex = chain.Next(pindex))
+        for (; pindex; pindex = ::ChainActive().Next(pindex))
         {
             vHeaders.push_back(pindex->GetBlockHeader());
             if (--nLimit <= 0 || pindex->GetBlockHash() == hashStop)
                 break;
         }
-        // pindex can be nullptr either if we sent chain.Tip() OR
-        // if our peer has chain.Tip() (and thus we are sending an empty
+        // pindex can be nullptr either if we sent ::ChainActive().Tip() OR
+        // if our peer has ::ChainActive().Tip() (and thus we are sending an empty
         // headers message). In both cases it's safe to update
         // pindexBestHeaderSent to be our tip.
         //
@@ -2403,7 +2391,7 @@ bool static ProcessMessage(CNode* pfrom, const std::string& strCommand, CDataStr
         // without the new block. By resetting the BestHeaderSent, we ensure we
         // will re-announce the new block via headers (or compact blocks again)
         // in the SendMessages logic.
-        nodestate->pindexBestHeaderSent = pindex ? pindex : chain.Tip();
+        nodestate->pindexBestHeaderSent = pindex ? pindex : ::ChainActive().Tip();
         connman->PushMessage(pfrom, msgMaker.Make(NetMsgType::HEADERS, vHeaders));
         return true;
     }
@@ -3650,7 +3638,7 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
                 for (const uint256 &hash : pto->vBlockHashesToAnnounce) {
                     const CBlockIndex* pindex = LookupBlockIndex(hash);
                     assert(pindex);
-                    if (g_chainman.ValidatedChain()[pindex->nHeight] != pindex) {
+                    if (::ChainActive()[pindex->nHeight] != pindex) {
                         // Bail out if we reorged away from this block
                         fRevertToInv = true;
                         break;
@@ -3746,10 +3734,10 @@ bool PeerLogicValidation::SendMessages(CNode* pto)
                     // Warn if we're announcing a block that is not on the main chain.
                     // This should be very rare and could be optimized out.
                     // Just log for now.
-                    if (g_chainman.ValidatedChain()[pindex->nHeight] != pindex) {
+                    if (::ChainActive()[pindex->nHeight] != pindex) {
                         LogPrint(BCLog::NET, "Announcing block %s not on main chain (tip=%s)\n",
                             hashToAnnounce.ToString(),
-                            g_chainman.ValidatedTip()->GetBlockHash().ToString());
+                            ::ChainActive().Tip()->GetBlockHash().ToString());
                     }
 
                     // If the peer's chain has this block, don't inv it back.
