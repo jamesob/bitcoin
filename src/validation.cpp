@@ -55,6 +55,9 @@
 #define MICRO 0.000001
 #define MILLI 0.001
 
+std::map<int64_t, std::pair<int, uint64_t>> time_to_height_and_cache_usage;
+std::map<int64_t, std::pair<int, uint64_t>> time_to_height_and_flush_time;
+
 /**
  * Global state
  */
@@ -2074,6 +2077,9 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
 bool static FlushStateToDisk(const CChainParams& chainparams, CValidationState &state, FlushStateMode mode, int nManualPruneHeight) {
     int64_t nMempoolUsage = mempool.DynamicMemoryUsage();
     LOCK(cs_main);
+
+    int64_t JAMESOB_flush_start = GetTimeMicros();
+
     static int64_t nLastWrite = 0;
     static int64_t nLastFlush = 0;
     std::set<int> setFilesToPrune;
@@ -2170,6 +2176,8 @@ bool static FlushStateToDisk(const CChainParams& chainparams, CValidationState &
     if (full_flush_completed) {
         // Update best block in wallet (so we can detect restored wallets).
         GetMainSignals().ChainStateFlushed(chainActive.GetLocator());
+        time_to_height_and_flush_time[GetTimeMicros()] =
+            {chainActive.Height(), MILLI * (GetTimeMicros() - JAMESOB_flush_start)};
     }
     } catch (const std::runtime_error& e) {
         return AbortNode(state, std::string("System error while flushing: ") + e.what());
@@ -2734,6 +2742,12 @@ bool CChainState::ActivateBestChain(CValidationState &state, const CChainParams&
     // Write changes periodically to disk, after relay.
     if (!FlushStateToDisk(chainparams, state, FlushStateMode::PERIODIC)) {
         return false;
+    }
+
+    {
+        LOCK(cs_main);
+        time_to_height_and_cache_usage[::GetTimeMicros()] =
+            {::chainActive.Height(), ::pcoinsTip->DynamicMemoryUsage()};
     }
 
     return true;

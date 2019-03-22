@@ -47,6 +47,9 @@ struct ChainTxData;
 struct PrecomputedTransactionData;
 struct LockPoints;
 
+extern std::map<int64_t, std::pair<int, uint64_t>> time_to_height_and_cache_usage;
+extern std::map<int64_t, std::pair<int, uint64_t>> time_to_height_and_flush_time;
+
 /** Default for -whitelistrelay. */
 static const bool DEFAULT_WHITELISTRELAY = true;
 /** Default for -whitelistforcerelay. */

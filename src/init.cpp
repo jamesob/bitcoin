@@ -59,6 +59,9 @@
 #include <sys/stat.h>
 #endif
 
+#include <inttypes.h>
+#include <boost/format.hpp>
+
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/algorithm/string/split.hpp>
@@ -199,6 +202,24 @@ void Shutdown(InitInterfaces& interfaces)
     if (!lockShutdown)
         return;
 
+    {
+        LOCK(cs_main);
+        // std::map<int64_t, std::pair<int, int64_t>> time_to_height_and_cache_usage;
+        // std::map<int64_t, std::pair<int, int64_t>> time_to_height_and_flush_time;
+
+        if (::time_to_height_and_cache_usage.size()) {
+            for (const auto& item : ::time_to_height_and_cache_usage) {
+                LogPrintf("cache:%lld,%s,%s\n", (long long)item.first, item.second.first, item.second.second);
+            }
+        }
+
+        if (::time_to_height_and_flush_time.size()) {
+            for (const auto& item : ::time_to_height_and_flush_time) {
+                LogPrintf("flush:%lld,%s,%s\n", (long long)item.first, item.second.first, item.second.second);
+            }
+        }
+    }
+
     /// Note: Shutdown() must be able to handle cases in which initialization failed part of the way,
     /// for example if the data directory was found to be locked.
     /// Be sure that anything that writes files or flushes caches only does this if the respective
@@ -295,6 +316,7 @@ void Shutdown(InitInterfaces& interfaces)
     } catch (const fs::filesystem_error& e) {
         LogPrintf("%s: Unable to remove PID file: %s\n", __func__, fsbridge::get_filesystem_error_message(e));
     }
+
     interfaces.chain_clients.clear();
     UnregisterAllValidationInterfaces();
     GetMainSignals().UnregisterBackgroundSignalScheduler();
