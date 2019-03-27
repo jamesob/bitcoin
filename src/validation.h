@@ -614,6 +614,11 @@ void ResetBlockFailureFlags(CBlockIndex* pindex) EXCLUSIVE_LOCKS_REQUIRED(cs_mai
 /** The currently-connected chain of blocks (protected by cs_main). */
 extern CChain& chainActive;
 
+extern CChainState g_chainstate;
+
+/** @returns the most-work chain. */
+CChain& ChainActive();
+
 /** Global variable that points to the coins database (protected by cs_main) */
 extern std::unique_ptr<CCoinsViewDB> pcoinsdbview;
 
