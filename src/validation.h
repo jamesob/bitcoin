@@ -532,7 +532,12 @@ private:
     CCriticalSection m_cs_chainstate;
 
 public:
-    CChain chainActive;
+    /**
+     * The current chain of blockheaders we consult and build on.
+     *
+     * @see CChain, CBlockIndex.
+     */
+    CChain m_chain;
     BlockMap mapBlockIndex GUARDED_BY(cs_main);
     std::multimap<CBlockIndex*, CBlockIndex*> mapBlocksUnlinked;
     CBlockIndex *pindexBestInvalid = nullptr;
