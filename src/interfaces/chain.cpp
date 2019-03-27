@@ -347,7 +347,7 @@ public:
     CAmount maxTxFee() override { return ::maxTxFee; }
     bool getPruneMode() override { return ::fPruneMode; }
     bool p2pEnabled() override { return g_connman != nullptr; }
-    bool isInitialBlockDownload() override { return IsInitialBlockDownload(); }
+    bool isInitialBlockDownload() override { return ::ChainstateActive()->IsInitialBlockDownload(); }
     bool shutdownRequested() override { return ShutdownRequested(); }
     int64_t getAdjustedTime() override { return GetAdjustedTime(); }
     void initMessage(const std::string& message) override { ::uiInterface.InitMessage(message); }
