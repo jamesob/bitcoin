@@ -48,8 +48,8 @@ static void DuplicateInputs(benchmark::State& state)
         LoadGenesisBlock(chainparams);
         CValidationState cvstate;
         ActivateBestChain(cvstate, chainparams);
-        assert(::chainActive.Tip() != nullptr);
-        const bool witness_enabled{IsWitnessEnabled(::chainActive.Tip(), chainparams.GetConsensus())};
+        assert(::ChainActive().Tip() != nullptr);
+        const bool witness_enabled{IsWitnessEnabled(::ChainActive().Tip(), chainparams.GetConsensus())};
         assert(witness_enabled);
     }
 
@@ -57,7 +57,7 @@ static void DuplicateInputs(benchmark::State& state)
     CMutableTransaction coinbaseTx{};
     CMutableTransaction naughtyTx{};
 
-    CBlockIndex* pindexPrev = ::chainActive.Tip();
+    CBlockIndex* pindexPrev = ::ChainActive().Tip();
     assert(pindexPrev != nullptr);
     block.nBits = GetNextWorkRequired(pindexPrev, &block, chainparams.GetConsensus());
     block.nNonce = 0;

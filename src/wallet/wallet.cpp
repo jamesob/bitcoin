@@ -1284,7 +1284,7 @@ void CWallet::BlockUntilSyncedToCurrentChain() {
 
     {
         // Skip the queue-draining stuff if we know we're caught up with
-        // chainActive.Tip()...
+        // ::ChainActive().Tip()...
         // We could also take cs_wallet here, and call m_last_block_processed
         // protected by cs_wallet instead of cs_main, but as long as we need
         // cs_main here anyway, it's easier to just call it cs_main-protected.
