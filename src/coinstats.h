@@ -24,7 +24,10 @@ struct CCoinsStats
     uint64_t nDiskSize;
     CAmount nTotalAmount;
 
-    CCoinsStats() : nHeight(0), nTransactions(0), nTransactionOutputs(0), nBogoSize(0), nDiskSize(0), nTotalAmount(0) {}
+    // The number of coins contained.
+    uint64_t coins_count;
+
+    CCoinsStats() : nHeight(0), nTransactions(0), nTransactionOutputs(0), nBogoSize(0), nDiskSize(0), nTotalAmount(0), coins_count(0) {}
 };
 
 //! Calculate statistics about the unspent transaction output set
