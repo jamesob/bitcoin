@@ -2230,6 +2230,70 @@ UniValue scantxoutset(const JSONRPCRequest& request)
     return result;
 }
 
+/**
+ * Serialize the UTXO set to a file for loading elsewhere.
+ *
+ * @see SnapshotMetadata
+ */
+UniValue dumptxoutset(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() != 1)
+        throw std::runtime_error(
+            RPCHelpMan{
+                "dumptxoutset",
+                "\nWrite the serialized UTXO set to disk.\n",
+                {
+                    {"path", RPCArg::Type::STR, RPCArg::Optional::NO, /* default_val */ "", "path to the output file"},
+                },
+                RPCResults{},
+                RPCExamples{""},
+            }.ToString()
+        );
+
+    std::string path = request.params[0].get_str();
+    FILE* file{fsbridge::fopen(path, "wb")};
+    CAutoFile afile{file, SER_DISK, CLIENT_VERSION};
+    std::unique_ptr<CCoinsViewCursor> pcursor;
+
+    {
+        LOCK(::cs_main);
+        ::FlushStateToDisk();
+        pcursor = std::unique_ptr<CCoinsViewCursor>(::ChainstateActive()->CoinsDB()->Cursor());
+        assert(pcursor);
+    }
+
+    CCoinsStats stats;
+    if (!GetUTXOStats(::ChainstateActive()->CoinsDB(), stats)) {
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "Unable to read UTXO set");
+    }
+
+    CBlockIndex* tip;
+    {
+        LOCK(::cs_main);
+        tip = LookupBlockIndex(stats.hashBlock);
+        assert(tip);
+    }
+    SnapshotMetadata metadata{
+        CDiskBlockIndex(tip), stats.hashSerialized, stats.coins_count, tip->nChainTx};
+
+    afile << metadata;
+
+    while (pcursor->Valid()) {
+        boost::this_thread::interruption_point();
+        COutPoint key;
+        Coin coin;
+        if (pcursor->GetKey(key) && pcursor->GetValue(coin)) {
+            afile << key;
+            afile << coin;
+        }
+
+        pcursor->Next();
+    }
+
+    afile.fclose();
+    return tfm::format("%d coins written at tip %s", stats.coins_count, tip->ToString());
+}
+
 // clang-format off
 static const CRPCCommand commands[] =
 { //  category              name                      actor (function)         argNames
@@ -2257,6 +2321,7 @@ static const CRPCCommand commands[] =
 
     { "blockchain",         "preciousblock",          &preciousblock,          {"blockhash"} },
     { "blockchain",         "scantxoutset",           &scantxoutset,           {"action", "scanobjects"} },
+    { "blockchain",         "dumptxoutset",           &dumptxoutset,           {"path"} },
 
     /* Not shown in help */
     { "hidden",             "invalidateblock",        &invalidateblock,        {"blockhash"} },
