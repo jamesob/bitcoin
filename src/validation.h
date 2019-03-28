@@ -22,6 +22,7 @@
 #include <txdb.h>
 #include <util/system.h>
 #include <versionbits.h>
+#include <serialize.h>
 
 #include <algorithm>
 #include <atomic>
@@ -656,6 +657,46 @@ bool InvalidateBlock(CValidationState& state, const CChainParams& chainparams, C
 
 /** Remove invalidity status from a block and its descendants. */
 void ResetBlockFailureFlags(CBlockIndex* pindex) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+
+/**
+ * Serialized version of a UTXO set from which an assumed-valid CChainState
+ * can be constructed.
+ */
+class SnapshotMetadata
+{
+public:
+    CDiskBlockIndex m_base_blockheader;
+    uint256 m_utxo_contents_hash = {};
+    uint64_t m_coins_count = 0;
+    /**
+     * Necessary to "fake" the base nChainTx so that we can estimate progress during
+     * snapshot IBD.
+     */
+    unsigned int m_nchaintx = 0;
+    bool m_validation_complete = false;
+
+    SnapshotMetadata() { }
+    SnapshotMetadata(
+        const CDiskBlockIndex& base_blockheader,
+        const uint256& utxo_contents_hash,
+        uint64_t coins_count,
+        unsigned int nchaintx) : m_utxo_contents_hash(utxo_contents_hash),
+            m_base_blockheader(base_blockheader), m_coins_count(coins_count),
+            m_nchaintx(nchaintx) { }
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action)
+    {
+        READWRITE(m_base_blockheader);
+        READWRITE(m_utxo_contents_hash);
+        READWRITE(m_coins_count);
+        READWRITE(m_nchaintx);
+        READWRITE(m_validation_complete);
+    }
+
+};
 
 /** @returns the most-work chainstate. */
 CChainState* ChainstateActive();
