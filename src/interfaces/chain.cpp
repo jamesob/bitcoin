@@ -192,17 +192,21 @@ public:
     {
         m_notifications->TransactionRemovedFromMempool(tx);
     }
-    void BlockConnected(const std::shared_ptr<const CBlock>& block,
+    void BlockConnected(const CChainState* chainstate,
+        const std::shared_ptr<const CBlock>& block,
         const CBlockIndex* index,
         const std::vector<CTransactionRef>& tx_conflicted) override
     {
         m_notifications->BlockConnected(*block, tx_conflicted);
     }
-    void BlockDisconnected(const std::shared_ptr<const CBlock>& block) override
+    void BlockDisconnected(const CChainState* chainstate, const std::shared_ptr<const CBlock>& block) override
     {
         m_notifications->BlockDisconnected(*block);
     }
-    void ChainStateFlushed(const CBlockLocator& locator) override { m_notifications->ChainStateFlushed(locator); }
+    void ChainStateFlushed(const CChainState* chainstate, const CBlockLocator& locator) override
+    {
+        m_notifications->ChainStateFlushed(locator);
+    }
     void ResendWalletTransactions(int64_t best_block_time, CConnman*) override
     {
         // `cs_main` is always held when this method is called, so it is safe to
