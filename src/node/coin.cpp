@@ -10,8 +10,8 @@
 void FindCoins(std::map<COutPoint, Coin>& coins)
 {
     LOCK2(cs_main, ::mempool.cs);
-    assert(pcoinsTip);
-    CCoinsViewCache& chain_view = *::pcoinsTip;
+    assert(::ChainstateActive()->CoinsCache());
+    CCoinsViewCache& chain_view = *::ChainstateActive()->CoinsCache();
     CCoinsViewMemPool mempool_view(&chain_view, ::mempool);
     for (auto& coin : coins) {
         if (!mempool_view.GetCoin(coin.first, coin.second)) {

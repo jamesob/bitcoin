@@ -75,8 +75,9 @@ static void AssembleBlock(benchmark::State& state)
     {
         LOCK(cs_main);
         ::pblocktree.reset(new CBlockTreeDB(1 << 20, true));
-        ::pcoinsdbview.reset(new CCoinsViewDB(1 << 23, true));
-        ::pcoinsTip.reset(new CCoinsViewCache(pcoinsdbview.get()));
+        g_chainstate.reset(new CChainState(
+            /* cache_size_bytes */ 1 << 23, /* in_memory */ true, /* should_wipe */ false));
+        UnloadBlockIndex();
     }
     {
         const CChainParams& chainparams = Params();
