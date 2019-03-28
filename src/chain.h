@@ -459,6 +459,9 @@ public:
     /** Set/initialize a chain with a given tip. */
     void SetTip(CBlockIndex *pindex);
 
+    /** Ensure all members of this chain have a truthy nTx/nChainTx value. */
+    void FakeNTx(unsigned int nChainTx);
+
     /** Return a CBlockLocator that refers to a block in this chain (by default the tip). */
     CBlockLocator GetLocator(const CBlockIndex *pindex = nullptr) const;
 
