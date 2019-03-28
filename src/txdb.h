@@ -66,6 +66,9 @@ public:
     //! Attempt to update from an older database format. Returns whether an error occurred.
     bool Upgrade();
     size_t EstimateSize() const override;
+
+    //! Mark the on-disk leveldb database for deletion.
+    void MarkForDeletion() { return db.MarkForDeletion(); }
 };
 
 /** Specialization of CCoinsViewCursor to iterate over a CCoinsViewDB */
