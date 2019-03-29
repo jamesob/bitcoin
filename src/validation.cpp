@@ -4593,6 +4593,14 @@ void CChainState::CheckBlockIndex(const Consensus::Params& consensusParams)
     assert(nNodes == forward.size());
 }
 
+std::string CChainState::ToString()
+{
+    CBlockIndex* tip = m_chain.Tip();
+    return tfm::format("Chainstate [%s] @ height %d (%s)",
+        m_from_snapshot_blockhash.IsNull() ? "ibd" : "snapshot",
+        tip ? tip->nHeight : -1, tip ? tip->GetBlockHash().ToString() : "null");
+}
+
 std::string CBlockFileInfo::ToString() const
 {
     return strprintf("CBlockFileInfo(blocks=%u, size=%u, heights=%u...%u, time=%s...%s)", nBlocks, nSize, nHeightFirst, nHeightLast, FormatISO8601Date(nTimeFirst), FormatISO8601Date(nTimeLast));

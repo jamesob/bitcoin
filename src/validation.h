@@ -574,6 +574,8 @@ public:
      */
     std::set<CBlockIndex*, CBlockIndexWorkComparator> setBlockIndexCandidates;
 
+    std::string ToString();
+
     CCoinsViewCache* CoinsCache() { return m_coins_views->m_cacheview.get(); }
     CCoinsViewDB* CoinsDB() { return m_coins_views->m_dbview.get(); }
     CCoinsViewErrorCatcher* CoinsErrorCatcher() { return m_coins_views->m_catcherview.get(); }
