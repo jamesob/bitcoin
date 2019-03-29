@@ -75,8 +75,8 @@ static void AssembleBlock(benchmark::State& state)
     {
         LOCK(cs_main);
         ::pblocktree.reset(new CBlockTreeDB(1 << 20, true));
-        g_chainstate.reset(new CChainState(
-            /* cache_size_bytes */ 1 << 23, /* in_memory */ true, /* should_wipe */ false));
+        g_chainman.InitializeChainstate(
+            /* cache_size_bytes */ 1 << 23, /* in_memory */ true, /* should_wipe */ false);
         UnloadBlockIndex();
     }
     {
