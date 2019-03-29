@@ -17,6 +17,7 @@
 #include <cuckoocache.h>
 #include <deploymentstatus.h>
 #include <flatfile.h>
+#include <fs.h>
 #include <hash.h>
 #include <index/blockfilterindex.h>
 #include <index/txindex.h>
@@ -5200,6 +5201,26 @@ bool ChainstateManager::IsAnyChainInIBD()
         return true;
     } else if (m_ibd_chainstate && m_ibd_chainstate->IsInitialBlockDownload()) {
         return true;
+    }
+    return false;
+}
+
+bool ChainstateManager::DetectSnapshotChainstate(CTxMemPool& mempool)
+{
+    constexpr int SNAPSHOT_NAME_LEN = 75; // "chainstate_" + 64 hex characters for blockhash.
+
+    for (fs::directory_iterator it(gArgs.GetDataDirNet()); it != fs::directory_iterator(); it++) {
+        if (fs::is_directory(*it) &&
+            !fs::is_empty(*it) &&
+            it->path().filename().string().length() == SNAPSHOT_NAME_LEN &&
+            it->path().filename().string().substr(0,11) == "chainstate_")
+        {
+            auto path = it->path();
+            LogPrintf("[snapshot] detected active snapshot chainstate (%s) - loading\n", path);
+            this->InitializeChainstate(
+                &mempool, /*snapshot_blockhash*/ uint256S(path.filename().string().substr(11)));
+            return true;
+        }
     }
     return false;
 }
