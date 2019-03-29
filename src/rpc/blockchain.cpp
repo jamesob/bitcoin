@@ -14,6 +14,7 @@
 #include <coinstats.h>
 #include <consensus/validation.h>
 #include <core_io.h>
+#include <fs.h>
 #include <hash.h>
 #include <index/txindex.h>
 #include <key_io.h>
@@ -2294,6 +2295,32 @@ UniValue dumptxoutset(const JSONRPCRequest& request)
     return tfm::format("%d coins written at tip %s", stats.coins_count, tip->ToString());
 }
 
+UniValue loadtxoutset(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() != 1)
+        throw std::runtime_error(
+            RPCHelpMan{"dumptxoutset",
+                "\nLoad the serialized UTXO set from disk.\n",
+                {
+                    {"path", RPCArg::Type::STR, RPCArg::Optional::NO, /* default_val */ "", "path to the output file"},
+                },
+                RPCResults{},
+                RPCExamples{""},
+            }.ToString()
+        );
+
+    std::string path{request.params[0].get_str()};
+    FILE* file{fsbridge::fopen(path, "rb")};
+    CAutoFile afile{file, SER_DISK, CLIENT_VERSION};
+    SnapshotMetadata metadata;
+    afile >> metadata;
+
+    g_chainman.ActivateSnapshot(
+        &afile, metadata, ::ChainstateActive()->m_coins_cache_size_bytes, false);
+
+    return tfm::format("Loaded snapshot %s", metadata.m_base_blockheader.GetBlockHash().ToString());
+}
+
 // clang-format off
 static const CRPCCommand commands[] =
 { //  category              name                      actor (function)         argNames
@@ -2322,6 +2349,7 @@ static const CRPCCommand commands[] =
     { "blockchain",         "preciousblock",          &preciousblock,          {"blockhash"} },
     { "blockchain",         "scantxoutset",           &scantxoutset,           {"action", "scanobjects"} },
     { "blockchain",         "dumptxoutset",           &dumptxoutset,           {"path"} },
+    { "blockchain",         "loadtxoutset",           &loadtxoutset,           {"path"} },
 
     /* Not shown in help */
     { "hidden",             "invalidateblock",        &invalidateblock,        {"blockhash"} },
