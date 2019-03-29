@@ -3521,6 +3521,12 @@ bool ChainstateManager::ProcessNewBlock(const CChainParams& chainparams, const s
 {
     AssertLockNotHeld(cs_main);
 
+    CChainState* chainstate;
+    {
+        LOCK(cs_main);
+        chainstate = &this->GetChainstateForNewBlock(block->GetHash());
+    }
+
     {
         CBlockIndex *pindex = nullptr;
         if (new_block) *new_block = false;
@@ -3538,7 +3544,8 @@ bool ChainstateManager::ProcessNewBlock(const CChainParams& chainparams, const s
         bool ret = CheckBlock(*block, state, chainparams.GetConsensus());
         if (ret) {
             // Store to disk
-            ret = ActiveChainstate().AcceptBlock(block, state, &pindex, force_processing, nullptr, new_block);
+            ret = chainstate->AcceptBlock(
+                block, state, &pindex, force_processing, nullptr, new_block);
         }
         if (!ret) {
             GetMainSignals().BlockChecked(*block, state);
@@ -3546,10 +3553,12 @@ bool ChainstateManager::ProcessNewBlock(const CChainParams& chainparams, const s
         }
     }
 
-    NotifyHeaderTip(ActiveChainstate());
+    if (WITH_LOCK(::cs_main, return chainstate == &this->ActiveChainstate())) {
+        NotifyHeaderTip(*chainstate);
+    }
 
     BlockValidationState state; // Only used to report errors, not invalidity - ignore it
-    if (!ActiveChainstate().ActivateBestChain(state, block)) {
+    if (!chainstate->ActivateBestChain(state, block)) {
         return error("%s: ActivateBestChain failed (%s)", __func__, state.ToString());
     }
 
@@ -5044,6 +5053,21 @@ bool ChainstateManager::PopulateAndValidateSnapshot(
     LogPrintf("[snapshot] validated snapshot (%.2f MB)\n",
         coins_cache.DynamicMemoryUsage() / (1000 * 1000));
     return true;
+}
+
+CChainState& ChainstateManager::GetChainstateForNewBlock(const uint256& blockhash)
+{
+    auto* pblock = m_blockman.LookupBlockIndex(blockhash);
+    if (m_snapshot_chainstate &&
+            // If pblock is null, we haven't seen the header for this block.
+            // Because we expect to have received the headers for the IBD chain
+            // contents before receiving blocks, this means that any block for
+            // which we don't have headers should go in the snapshot chain.
+            (pblock == nullptr || !m_snapshot_chainstate->m_chain.Contains(pblock))) {
+        return *m_snapshot_chainstate.get();
+    }
+    assert(m_ibd_chainstate);
+    return *m_ibd_chainstate.get();
 }
 
 CChainState& ChainstateManager::ActiveChainstate() const
