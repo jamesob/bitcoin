@@ -4872,6 +4872,136 @@ CChainState* ChainstateManager::InitializeChainstate(
     return to_modify.get();
 }
 
+bool ChainstateManager::ActivateSnapshot(
+        CAutoFile* coins_file,
+        SnapshotMetadata metadata,
+        size_t cache_size_bytes,
+        bool in_memory)
+{
+    uint256 base_blockhash = metadata.m_base_blockheader.GetBlockHash();
+
+    // Important that we haven't set `m_snapshot_metadata` yet before this point.
+    CChainState* snapshot_chainstate = InitializeChainstate(
+        cache_size_bytes, in_memory,
+        /* should_wipe */ false, /* activate */ false,
+        /* snapshot_blockhash */ base_blockhash, /* snapshot_needs_initialization */ true);
+
+    CCoinsViewCache* coins_cache = snapshot_chainstate->CoinsCache();
+
+    CCoinsMap coins_map;
+    COutPoint outpoint;
+    Coin coin;
+    uint64_t coins_count = metadata.m_coins_count;
+    uint64_t coins_left = metadata.m_coins_count;
+
+    LogPrintf("[snapshot] loading coins from snapshot %s\n", base_blockhash.ToString());
+
+    while (coins_left > 0) {
+        *coins_file >> outpoint;
+        *coins_file >> coin;
+        coins_map[outpoint] = CCoinsCacheEntry(std::move(coin), CCoinsCacheEntry::DIRTY);
+        coins_left -= 1;
+
+        if ((coins_count - coins_left) % 1000000 == 0) {
+            boost::this_thread::interruption_point();
+            LogPrintf("[snapshot] progress=%d\n", coins_count - coins_left);
+        }
+    }
+
+    bool out_of_coins{false};
+    try {
+        *coins_file >> outpoint;
+    } catch (const std::ios_base::failure&) {
+        // We expect an exception since we should be out of coins.
+        out_of_coins = true;
+    }
+    if (!out_of_coins) {
+        LogPrintf(
+            "[snapshot] Bad snapshot - coins left over after deserializing %d coins\n",
+            coins_count - coins_left);
+        return false;
+    }
+
+    LogPrintf(
+        "[snapshot] loaded %d coins from snapshot %s\n",
+        coins_count - coins_left, base_blockhash.ToString());
+
+    // No need to acquire cs_main since this chainstate isn't being used yet.
+    coins_cache->BatchWrite(coins_map, base_blockhash);
+    coins_cache->Flush();
+    assert(coins_cache->GetBestBlock() == base_blockhash);
+
+    CCoinsStats stats;
+    if (!GetUTXOStats(snapshot_chainstate->m_coins_views->m_dbview.get(), stats)) {
+        LogPrintf("[snapshot] failed to generate coins stats\n");
+        return false;
+    }
+
+    if (stats.hashSerialized != metadata.m_utxo_contents_hash) {
+        LogPrintf(
+            "[snapshot] bad snapshot content hash: expected %s, got %s\n",
+            metadata.m_utxo_contents_hash.ToString(), stats.hashSerialized.ToString());
+        return false;
+    }
+    if (stats.coins_count != coins_count) {
+        LogPrintf(
+            "[snapshot] bad snapshot coins count: expected %d, got %d\n",
+            coins_count, stats.coins_count);
+        return false;
+    }
+
+    int max_secs_to_wait_for_headers = 60 * 10;
+    CBlockIndex* snapshot_start_block = nullptr;
+
+    while (max_secs_to_wait_for_headers > 0) {
+        {
+            LOCK(cs_main);
+            snapshot_start_block = LookupBlockIndex(base_blockhash);
+        }
+        max_secs_to_wait_for_headers -= 1;
+
+        if (!snapshot_start_block) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        } else {
+            break;
+        }
+    }
+
+    LOCK(cs_main);
+    int base_height = metadata.m_base_blockheader.nHeight;
+
+    if (snapshot_start_block == nullptr) {
+        LogPrintf(
+            "[snapshot] timed out waiting for snapshot start blockheader %s\n",
+            base_blockhash.ToString());
+        return false;
+    }
+
+    m_unready_snapshot_chainstate->m_chain.SetTip(snapshot_start_block);
+    m_unready_snapshot_chainstate->m_chain.FakeNTx(metadata.m_nchaintx);
+
+    int current_height = m_unready_snapshot_chainstate->m_chain.Height();
+    if (current_height != base_height) {
+        LogPrintf("[snapshot] bad snapshot height: expected %d, got %d\n", base_height, current_height);
+        return false;
+    }
+
+    m_unready_snapshot_chainstate->setBlockIndexCandidates.insert(snapshot_start_block);
+    m_snapshot_chainstate.swap(m_unready_snapshot_chainstate);
+    assert(m_snapshot_chainstate->LoadChainTip(Params()));
+
+    m_active_chainstate = m_snapshot_chainstate.get();
+    m_snapshot_metadata = MakeUnique<SnapshotMetadata>(metadata);
+    SaveSnapshotMetadataToDisk();
+
+    if (g_is_mempool_loaded) {
+        ::mempool.clear();
+    }
+
+    LogPrintf("[snapshot] successfully activated snapshot %s\n", base_blockhash.ToString());
+    return true;
+}
+
 CChain& ChainstateManager::ActiveChain() const
 {
     return m_active_chainstate->m_chain;
