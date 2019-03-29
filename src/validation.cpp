@@ -5095,15 +5095,31 @@ void ChainstateManager::MaybeRebalanceCaches()
     }
 }
 
-std::optional<CBlockIndex*> ChainstateManager::GetSnapshotBaseBlock()
+std::optional<unsigned int> ChainstateManager::GetSnapshotNChainTx()
 {
-    auto blockhash_op = SnapshotBlockhash();
-    if (!blockhash_op) {
+    auto height = this->GetSnapshotHeight();
+    if (!height) {
         return std::nullopt;
     }
-    return m_blockman.LookupBlockIndex(*blockhash_op);
+
+    auto au_data = ExpectedAssumeutxo(*height, ::Params());
+    if (!au_data) {
+        return std::nullopt;
+    }
+
+    return au_data->nChainTx;
 }
 
+std::optional<CBlockIndex*> ChainstateManager::GetSnapshotBaseBlock()
+    {
+        auto blockhash_op = SnapshotBlockhash();
+        if (!blockhash_op) {
+            return std::nullopt;
+        }
+        return m_blockman.LookupBlockIndex(*blockhash_op);
+    }
+
+//! @returns height at which the active UTXO snapshot was taken.
 std::optional<int> ChainstateManager::GetSnapshotHeight()
 {
     std::optional<CBlockIndex*> base = this->GetSnapshotBaseBlock();
