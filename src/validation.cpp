@@ -2351,6 +2351,20 @@ bool CChainState::ConnectTip(CValidationState& state, const CChainParams& chainp
     LogPrint(BCLog::BENCH, "  - Connect postprocess: %.2fms [%.2fs (%.2fms/blk)]\n", (nTime6 - nTime5) * MILLI, nTimePostConnect * MICRO, nTimePostConnect * MILLI / nBlocksTotal);
     LogPrint(BCLog::BENCH, "- Connect block: %.2fms [%.2fs (%.2fms/blk)]\n", (nTime6 - nTime1) * MILLI, nTimeTotal * MICRO, nTimeTotal * MILLI / nBlocksTotal);
 
+    // If this is our non-active validation chainstate, check to see if it's
+    // time we compare the UTXO set hash to the base of our active snapshot.
+    //
+    if (g_chainman.IsBackgroundValidationChainstate(this)) {
+        if (pindexNew->nHeight > g_chainman.SnapshotHeight()) {
+            // TODO jamesob: better handling?
+            LogPrintf(
+                "[snapshot] something is wrong! validation chain should not have " /* Continued */
+                "continued past the snapshot origin\n");
+        } else if (pindexNew->nHeight == g_chainman.SnapshotHeight()) {
+            g_chainman.CompleteSnapshotValidation(this);
+        }
+    }
+
     connectTrace.BlockConnected(pindexNew, std::move(pthisBlock));
     return true;
 }
@@ -2542,6 +2556,22 @@ static void LimitValidationInterfaceQueue() {
     }
 }
 
+void CChainState::Delete()
+{
+    AssertLockNotHeld(cs_main);
+
+    // Ensure that we drain any callbacks referring to this chainstate before
+    // proceeding with deletion.
+    SyncWithValidationInterfaceQueue();
+
+    LOCK(cs_main);
+    m_coins_views->m_dbview->MarkForDeletion();
+
+    // After this is called, the actual instance will be destructed by
+    // `ChainstateManager::DeleteStaleChainstates()` and the coinsdb (leveldb) on-disk data
+    // will be subsequently removed.
+}
+
 /**
  * Make the best chain active, in multiple steps. The result is either failure
  * or an activated best chain. pblock is either nullptr or a pointer to a block
@@ -2631,6 +2661,12 @@ bool CChainState::ActivateBestChain(CValidationState &state, const CChainParams&
         // When we reach this point, we switched to a new tip (stored in pindexNewTip).
 
         if (nStopAtHeight && pindexNewTip && pindexNewTip->nHeight >= nStopAtHeight) StartShutdown();
+
+        // This will have been toggled in ABCStep -> ConnectTip -> CompleteSnapshotValidation,
+        // if at all, so we should catch it here.
+        if (m_should_delete) {
+            return true;
+        }
 
         // We check shutdown only after giving ActivateBestChainStep a chance to run once so that we
         // never shutdown before connecting the genesis block during LoadChainTip(). Previously this
@@ -5102,4 +5138,21 @@ CChainState* ChainstateManager::GetChainstateForNewBlock(const uint256& blockhas
 CChain& ChainstateManager::ActiveChain() const
 {
     return m_active_chainstate->m_chain;
+}
+
+void ChainstateManager::DeleteStaleChainstates()
+{
+    // CChainState::Delete() will sync with the validation queue.
+    AssertLockNotHeld(cs_main);
+
+    if (m_ibd_chainstate && m_ibd_chainstate->m_should_delete) {
+        assert(m_ibd_chainstate.get() != m_active_chainstate);
+        m_ibd_chainstate->Delete();
+        m_ibd_chainstate.reset();
+    }
+    if (m_snapshot_chainstate && m_snapshot_chainstate->m_should_delete) {
+        assert(m_snapshot_chainstate.get() != m_active_chainstate);
+        m_snapshot_chainstate->Delete();
+        m_snapshot_chainstate.reset();
+    }
 }

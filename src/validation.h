@@ -608,6 +608,12 @@ public:
     size_t m_coins_cache_size_bytes;
 
     /**
+     * Free members and *delete* the on-disk coinsdb data. Should only be used for
+     * background validation chainstates we're throwing away.
+     */
+    void Delete();
+
+    /**
      * Update the on-disk chain state.
      * The caches and indexes are flushed depending on the mode we're called with
      * if they're too large, if it's been a while since the last write,
@@ -957,6 +963,10 @@ public:
         m_unready_snapshot_chainstate.reset();
         m_active_chainstate = nullptr;
     }
+
+    //! Check to see if any of the chainstates under management have signaled
+    //! deletion. If so, unlink them.
+    void DeleteStaleChainstates();
 };
 
 extern ChainstateManager g_chainman;

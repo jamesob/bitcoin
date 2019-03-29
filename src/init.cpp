@@ -230,6 +230,13 @@ void Shutdown(InitInterfaces& interfaces)
         if (chainstate->CoinsCache()) FlushStateToDisk(chainstate);
     }
 
+    // Check to see if there are any stale chainstates we need to clean up.
+    //
+    // Note that as a disk-space optimization we could do this earlier (say, as
+    // soon as we realize that a chainstate is unnecessary, when we set
+    // m_should_delete), but avoiding race conditions becomes tricky.
+    g_chainman.DeleteStaleChainstates();
+
     // After there are no more peers/RPC left to give us new data which may generate
     // CValidationInterface callbacks, flush them...
     GetMainSignals().FlushBackgroundCallbacks();
