@@ -1521,8 +1521,8 @@ bool AppInitMain(InitInterfaces& interfaces)
                 is_coinsview_empty = fReset || fReindexChainState ||
                     g_chainstate->CoinsCache()->GetBestBlock().IsNull();
                 if (!is_coinsview_empty) {
-                    // LoadChainTip sets ::ChainActive() based on CoinsCache()'s best block
-                    if (!LoadChainTip(chainparams)) {
+                    // LoadChainTip initializes the chain based on CoinsCache()'s best block
+                    if (!::ChainstateActive()->LoadChainTip(chainparams)) {
                         strLoadError = _("Error initializing block database");
                         break;
                     }

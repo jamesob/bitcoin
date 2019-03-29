@@ -3818,16 +3818,18 @@ bool static LoadBlockIndexDB(const CChainParams& chainparams) EXCLUSIVE_LOCKS_RE
     return true;
 }
 
-bool LoadChainTip(const CChainParams& chainparams)
+bool CChainState::LoadChainTip(const CChainParams& chainparams)
 {
     AssertLockHeld(cs_main);
-    CCoinsViewCache* coins_cache = ::ChainstateActive()->CoinsCache();
 
-    if (::ChainActive().Tip() && ::ChainActive().Tip()->GetBlockHash() == coins_cache->GetBestBlock()) return true;
+    CCoinsViewCache* coins_cache = m_coins_views->m_cacheview.get();
+    CBlockIndex* tip = m_chain.Tip();
+
+    if (tip && tip->GetBlockHash() == coins_cache->GetBestBlock()) return true;
 
     if (coins_cache->GetBestBlock().IsNull() && mapBlockIndex.size() == 1) {
         // In case we just added the genesis block, connect it now, so
-        // that we always have a ::ChainActive().Tip() when we return.
+        // that we always have a tip when we return.
         LogPrintf("%s: Connecting genesis block...\n", __func__);
         CValidationState state;
         if (!ActivateBestChain(state, chainparams)) {
@@ -3841,14 +3843,15 @@ bool LoadChainTip(const CChainParams& chainparams)
     if (!pindex) {
         return false;
     }
-    ::ChainActive().SetTip(pindex);
+    m_chain.SetTip(pindex);
+    PruneBlockIndexCandidates();
 
-    ::ChainstateActive()->PruneBlockIndexCandidates();
-
+    tip = m_chain.Tip();
     LogPrintf("Loaded best chain: hashBestChain=%s height=%d date=%s progress=%f\n",
-        ::ChainActive().Tip()->GetBlockHash().ToString(), ::ChainActive().Height(),
-        FormatISO8601DateTime(::ChainActive().Tip()->GetBlockTime()),
-        GuessVerificationProgress(chainparams.TxData(), ::ChainActive().Tip()));
+        tip->GetBlockHash().ToString(),
+        m_chain.Height(),
+        FormatISO8601DateTime(tip->GetBlockTime()),
+        GuessVerificationProgress(chainparams.TxData(), tip));
     return true;
 }
 
