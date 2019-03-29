@@ -140,6 +140,10 @@ void CZMQNotificationInterface::Shutdown()
 
 void CZMQNotificationInterface::UpdatedBlockTip(const CChainState* chainstate, const CBlockIndex *pindexNew, const CBlockIndex *pindexFork, bool fInitialDownload)
 {
+    // Don't notify for events from the background validation chainstate.
+    if (chainstate != ::ChainstateActive()) {
+        return;
+    }
     if (fInitialDownload || pindexNew == pindexFork) // In IBD or blocks were disconnected without any new ones
         return;
 
