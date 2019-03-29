@@ -34,6 +34,7 @@
 #include <timedata.h>
 #include <tinyformat.h>
 #include <txdb.h>
+#include <txmempool.h>
 #include <ui_interface.h>
 #include <undo.h>
 #include <util/moneystr.h>
@@ -143,7 +144,7 @@ public:
  */
 RecursiveMutex cs_main;
 
-BlockMap& mapBlockIndex = g_blockmetaman.m_block_index;
+BlockMap& mapBlockIndex GUARDED_BY(cs_main) = g_blockmetaman.m_block_index;
 CBlockIndex *pindexBestHeader = nullptr;
 Mutex g_best_block_mutex;
 std::condition_variable g_best_block_cv;
@@ -264,7 +265,7 @@ bool TestLockPointValidity(const LockPoints* lp)
     // If there are relative lock times then the maxInputBlock will be set
     // If there are no relative lock times, the LockPoints don't depend on the chain
     if (lp->maxInputBlock) {
-        // Check whether ::ChainActive() is an extension of the block at which the LockPoints
+        // Check whether the active chain is an extension of the block at which the LockPoints
         // calculation was valid.  If not LockPoints are no longer valid
         if (!::ChainActive().Contains(lp->maxInputBlock)) {
             return false;
@@ -300,8 +301,9 @@ bool CheckSequenceLocks(const CTxMemPool& pool, const CTransaction& tx, int flag
         lockPair.second = lp->time;
     }
     else {
-        // CoinsCache() contains the UTXO set for ::ChainActive().Tip()
-        CCoinsViewMemPool viewMemPool(::ChainstateActive()->CoinsCache(), pool);
+        // Since this function is only used for mempool maintenance, we don't
+        // need to be concerned with parameterizing the UTXO set.
+        CCoinsViewMemPool viewMemPool(g_chainman.ActiveCoinsCache(), pool);
         std::vector<int> prevheights;
         prevheights.resize(tx.vin.size());
         for (size_t txinIndex = 0; txinIndex < tx.vin.size(); txinIndex++) {
@@ -2009,7 +2011,10 @@ bool CChainState::FlushStateToDisk(
         }
         int64_t nMempoolSizeMax = gArgs.GetArg("-maxmempool", DEFAULT_MAX_MEMPOOL_SIZE) * 1000000;
         int64_t cacheSize = CoinsCache()->DynamicMemoryUsage();
-        int64_t nTotalSpace = nCoinCacheUsage + std::max<int64_t>(nMempoolSizeMax - nMempoolUsage, 0);
+
+        // Divide up coincache usage evenly per chainstate in use.
+        int64_t coincacheusage_per_chainstate = nCoinCacheUsage / g_chainman.GetAll().size();
+        int64_t nTotalSpace = coincacheusage_per_chainstate + std::max<int64_t>(nMempoolSizeMax - nMempoolUsage, 0);
         // The cache is large and we're within 10% and 10 MiB of the limit, but we have time now (not in the middle of a block processing).
         bool fCacheLarge = mode == FlushStateMode::PERIODIC && cacheSize > std::max((9 * nTotalSpace) / 10, nTotalSpace - MAX_BLOCK_COINSDB_USAGE * 1024 * 1024);
         // The cache is over the limit, we have to write now.
@@ -2121,7 +2126,13 @@ static void AppendWarning(std::string& res, const std::string& warn)
 }
 
 /** Check warning conditions and do some notifications on new chain tip set. */
-void static UpdateTip(const CBlockIndex *pindexNew, const CChainParams& chainParams) {
+void static UpdateTip(const CBlockIndex *pindexNew, const CChainParams& chainParams, const CCoinsViewCache* coins_view) {
+    // The contents of this function are either not relevant if we're in IBD
+    // or only pertains to the primary coins view, so bail otherwise.
+    if (coins_view != g_chainman.ActiveCoinsCache()) {
+        return;
+    }
+
     // New best block
     mempool.AddTransactionsUpdated(1);
 
@@ -2219,7 +2230,7 @@ bool CChainState::DisconnectTip(CValidationState& state, const CChainParams& cha
 
     m_chain.SetTip(pindexDelete->pprev);
 
-    UpdateTip(pindexDelete->pprev, chainparams);
+    UpdateTip(pindexDelete->pprev, chainparams, CoinsCache());
     // Let wallets know transactions went from 1-confirmed to
     // 0-confirmed or conflicted:
     GetMainSignals().BlockDisconnected(this, pblock);
@@ -2340,12 +2351,15 @@ bool CChainState::ConnectTip(CValidationState& state, const CChainParams& chainp
         return false;
     int64_t nTime5 = GetTimeMicros(); nTimeChainState += nTime5 - nTime4;
     LogPrint(BCLog::BENCH, "  - Writing chainstate: %.2fms [%.2fs (%.2fms/blk)]\n", (nTime5 - nTime4) * MILLI, nTimeChainState * MICRO, nTimeChainState * MILLI / nBlocksTotal);
-    // Remove conflicting transactions from the mempool.;
-    mempool.removeForBlock(blockConnecting.vtx, pindexNew->nHeight);
-    disconnectpool.removeForBlock(blockConnecting.vtx);
-    // Update m_chain & related variables.
+
+    // Remove conflicting transactions from the mempool if we are the active chain.
+    if (this == ::ChainstateActive()) {
+        mempool.removeForBlock(blockConnecting.vtx, pindexNew->nHeight);
+        disconnectpool.removeForBlock(blockConnecting.vtx);
+    }
+
     m_chain.SetTip(pindexNew);
-    UpdateTip(pindexNew, chainparams);
+    UpdateTip(pindexNew, chainparams, CoinsCache());
 
     int64_t nTime6 = GetTimeMicros(); nTimePostConnect += nTime6 - nTime5; nTimeTotal += nTime6 - nTime1;
     LogPrint(BCLog::BENCH, "  - Connect postprocess: %.2fms [%.2fs (%.2fms/blk)]\n", (nTime6 - nTime5) * MILLI, nTimePostConnect * MICRO, nTimePostConnect * MILLI / nBlocksTotal);
@@ -3354,8 +3368,9 @@ bool BlockMetadataManager::AcceptBlockHeader(const CBlockHeader& block, CValidat
     if (ppindex)
         *ppindex = pindex;
 
-    // TODO(utxosnapshots) run on all chainstates
-    ::ChainstateActive()->CheckBlockIndex(chainparams.GetConsensus());
+    g_chainman.RunOnAll([&chainparams](CChainState* chainstate) {
+        chainstate->CheckBlockIndex(chainparams.GetConsensus());
+    });
 
     return true;
 }
@@ -3620,17 +3635,40 @@ static void FindFilesToPruneManual(std::set<int>& setFilesToPrune, int nManualPr
     if (::ChainActive().Tip() == nullptr)
         return;
 
-    // last block to prune is the lesser of (user-specified height, MIN_BLOCKS_TO_KEEP from the tip)
-    unsigned int nLastBlockWeCanPrune = std::min((unsigned)nManualPruneHeight, ::ChainActive().Tip()->nHeight - MIN_BLOCKS_TO_KEEP);
-    int count=0;
-    for (int fileNumber = 0; fileNumber < nLastBlockFile; fileNumber++) {
-        if (vinfoBlockFile[fileNumber].nSize == 0 || vinfoBlockFile[fileNumber].nHeightLast > nLastBlockWeCanPrune)
-            continue;
-        PruneOneBlockFile(fileNumber);
-        setFilesToPrune.insert(fileNumber);
-        count++;
+    for (CChainState* chainstate : g_chainman.GetAll()) {
+        // last block to prune is the lesser of (user-specified height, MIN_BLOCKS_TO_KEEP from the tip)
+        unsigned int nLastBlockWeCanPrune = std::min(
+            (unsigned)nManualPruneHeight,
+            chainstate->m_chain.Height() - MIN_BLOCKS_TO_KEEP);
+
+        // Depending on which chainstate we're pruning, we may have a differet
+        // start height.
+        unsigned int start_height = g_chainman.PruneStartHeight(chainstate);
+
+        // For the background validation chainstate, aggressively prune up to
+        // the latest block (since our prune allowance only applies to
+        // immediately behind the tip, which lives on the snapshot chain).
+        //
+        if (g_chainman.IsBackgroundValidationChainstate(chainstate)) {
+            nLastBlockWeCanPrune = std::min(
+                nManualPruneHeight,
+                // TODO jamesob: is this an off-by-one?
+                chainstate->m_chain.Height() - 1);
+        }
+
+        int count=0;
+        for (int fileNumber = 0; fileNumber < nLastBlockFile; fileNumber++) {
+            if (vinfoBlockFile[fileNumber].nSize == 0 ||
+                    vinfoBlockFile[fileNumber].nHeightLast > nLastBlockWeCanPrune ||
+                    vinfoBlockFile[fileNumber].nHeightFirst <= start_height)
+                continue;
+            PruneOneBlockFile(fileNumber);
+            setFilesToPrune.insert(fileNumber);
+            count++;
+        }
+        LogPrintf("Prune (Manual) (%s): prune_height=%d removed %d blk/rev pairs\n",
+                  chainstate->ToString(), nLastBlockWeCanPrune, count);
     }
-    LogPrintf("Prune (Manual): prune_height=%d removed %d blk/rev pairs\n", nLastBlockWeCanPrune, count);
 }
 
 /* This function is called from the RPC code for pruneblockchain */
@@ -3665,54 +3703,76 @@ static void FindFilesToPrune(std::set<int>& setFilesToPrune, uint64_t nPruneAfte
     if (::ChainActive().Tip() == nullptr || nPruneTarget == 0) {
         return;
     }
-    if ((uint64_t)::ChainActive().Tip()->nHeight <= nPruneAfterHeight) {
-        return;
-    }
 
-    unsigned int nLastBlockWeCanPrune = ::ChainActive().Tip()->nHeight - MIN_BLOCKS_TO_KEEP;
-    uint64_t nCurrentUsage = CalculateCurrentUsage();
-    // We don't check to prune until after we've allocated new space for files
-    // So we should leave a buffer under our target to account for another allocation
-    // before the next pruning.
-    uint64_t nBuffer = BLOCKFILE_CHUNK_SIZE + UNDOFILE_CHUNK_SIZE;
-    uint64_t nBytesToPrune;
-    int count=0;
-
-    if (nCurrentUsage + nBuffer >= nPruneTarget) {
-        // On a prune event, the chainstate DB is flushed.
-        // To avoid excessive prune events negating the benefit of high dbcache
-        // values, we should not prune too rapidly.
-        // So when pruning in IBD, increase the buffer a bit to avoid a re-prune too soon.
-        if (::ChainstateActive()->IsInitialBlockDownload()) {
-            // Since this is only relevant during IBD, we use a fixed 10%
-            nBuffer += nPruneTarget / 10;
+    for (CChainState* chainstate : g_chainman.GetAll()) {
+        uint64_t height = chainstate->m_chain.Height();
+        if (height <= nPruneAfterHeight) {
+            continue;
         }
 
-        for (int fileNumber = 0; fileNumber < nLastBlockFile; fileNumber++) {
-            nBytesToPrune = vinfoBlockFile[fileNumber].nSize + vinfoBlockFile[fileNumber].nUndoSize;
+        unsigned int nLastBlockWeCanPrune = height - MIN_BLOCKS_TO_KEEP;
+        // Depending on which chainstate we're pruning, we may have a differet
+        // start height.
+        unsigned int start_height = g_chainman.PruneStartHeight(chainstate);
 
-            if (vinfoBlockFile[fileNumber].nSize == 0)
-                continue;
-
-            if (nCurrentUsage + nBuffer < nPruneTarget)  // are we below our target?
-                break;
-
-            // don't prune files that could have a block within MIN_BLOCKS_TO_KEEP of the main chain's tip but keep scanning
-            if (vinfoBlockFile[fileNumber].nHeightLast > nLastBlockWeCanPrune)
-                continue;
-
-            PruneOneBlockFile(fileNumber);
-            // Queue up the files for removal
-            setFilesToPrune.insert(fileNumber);
-            nCurrentUsage -= nBytesToPrune;
-            count++;
+        // For the background validation chainstate, allow aggressive pruning up to
+        // the latest block (since our prune allowance only applies to
+        // immediately behind the tip, which lives on the snapshot chain).
+        //
+        if (g_chainman.IsBackgroundValidationChainstate(chainstate)) {
+            // TODO jamesob: is this an off-by-one?
+            nLastBlockWeCanPrune = height - 1;
         }
-    }
 
-    LogPrint(BCLog::PRUNE, "Prune: target=%dMiB actual=%dMiB diff=%dMiB max_prune_height=%d removed %d blk/rev pairs\n",
-           nPruneTarget/1024/1024, nCurrentUsage/1024/1024,
-           ((int64_t)nPruneTarget - (int64_t)nCurrentUsage)/1024/1024,
-           nLastBlockWeCanPrune, count);
+        uint64_t nCurrentUsage = CalculateCurrentUsage();
+        // We don't check to prune until after we've allocated new space for files
+        // So we should leave a buffer under our target to account for another allocation
+        // before the next pruning.
+        uint64_t nBuffer = BLOCKFILE_CHUNK_SIZE + UNDOFILE_CHUNK_SIZE;
+        uint64_t nBytesToPrune;
+        int count=0;
+
+        if (nCurrentUsage + nBuffer >= nPruneTarget) {
+            // On a prune event, the chainstate DB is flushed.
+            // To avoid excessive prune events negating the benefit of high dbcache
+            // values, we should not prune too rapidly.
+            // So when pruning in IBD, increase the buffer a bit to avoid a re-prune too soon.
+            if (chainstate->IsInitialBlockDownload()) {
+                // Since this is only relevant during IBD, we use a fixed 10%
+                nBuffer += nPruneTarget / 10;
+            }
+
+            for (int fileNumber = 0; fileNumber < nLastBlockFile; fileNumber++) {
+                nBytesToPrune = vinfoBlockFile[fileNumber].nSize + vinfoBlockFile[fileNumber].nUndoSize;
+
+                if (vinfoBlockFile[fileNumber].nSize == 0)
+                    continue;
+
+                if (nCurrentUsage + nBuffer < nPruneTarget)  // are we below our target?
+                    break;
+
+                // don't prune files that could have a block within MIN_BLOCKS_TO_KEEP of the main chain's tip but keep scanning
+                if (vinfoBlockFile[fileNumber].nHeightLast > nLastBlockWeCanPrune)
+                    continue;
+
+                // can't start pruning yet
+                if (vinfoBlockFile[fileNumber].nHeightFirst <= start_height) {
+                    continue;
+                }
+
+                PruneOneBlockFile(fileNumber);
+                // Queue up the files for removal
+                setFilesToPrune.insert(fileNumber);
+                nCurrentUsage -= nBytesToPrune;
+                count++;
+            }
+        }
+
+        LogPrint(BCLog::PRUNE, "Prune: (%s) target=%dMiB actual=%dMiB diff=%dMiB max_prune_height=%d removed %d blk/rev pairs\n",
+               chainstate->ToString(), nPruneTarget/1024/1024, nCurrentUsage/1024/1024,
+               ((int64_t)nPruneTarget - (int64_t)nCurrentUsage)/1024/1024,
+               nLastBlockWeCanPrune, count);
+    }
 }
 
 static FlatFileSeq BlockFileSeq()
@@ -3912,15 +3972,19 @@ CVerifyDB::~CVerifyDB()
     uiInterface.ShowProgress("", 100, false);
 }
 
-bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview, int nCheckLevel, int nCheckDepth)
+bool CVerifyDB::VerifyDB(
+    CChainState* chainstate,
+    const CChainParams& chainparams,
+    CCoinsView *coinsview,
+    int nCheckLevel, int nCheckDepth)
 {
     LOCK(cs_main);
-    if (::ChainActive().Tip() == nullptr || ::ChainActive().Tip()->pprev == nullptr)
+    if (chainstate->m_chain.Tip() == nullptr || chainstate->m_chain.Tip()->pprev == nullptr)
         return true;
 
     // Verify blocks in the best chain
-    if (nCheckDepth <= 0 || nCheckDepth > ::ChainActive().Height())
-        nCheckDepth = ::ChainActive().Height();
+    if (nCheckDepth <= 0 || nCheckDepth > chainstate->m_chain.Height())
+        nCheckDepth = chainstate->m_chain.Height();
     nCheckLevel = std::max(0, std::min(4, nCheckLevel));
     LogPrintf("Verifying last %i blocks at level %i\n", nCheckDepth, nCheckLevel);
     CCoinsViewCache coins(coinsview);
@@ -3930,18 +3994,18 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
     CValidationState state;
     int reportDone = 0;
     LogPrintf("[0%%]..."); /* Continued */
-    for (pindex = ::ChainActive().Tip(); pindex && pindex->pprev; pindex = pindex->pprev) {
+    for (pindex = chainstate->m_chain.Tip(); pindex && pindex->pprev; pindex = pindex->pprev) {
         boost::this_thread::interruption_point();
-        const int percentageDone = std::max(1, std::min(99, (int)(((double)(::ChainActive().Height() - pindex->nHeight)) / (double)nCheckDepth * (nCheckLevel >= 4 ? 50 : 100))));
+        const int percentageDone = std::max(1, std::min(99, (int)(((double)(chainstate->m_chain.Height() - pindex->nHeight)) / (double)nCheckDepth * (nCheckLevel >= 4 ? 50 : 100))));
         if (reportDone < percentageDone/10) {
             // report every 10% step
             LogPrintf("[%d%%]...", percentageDone); /* Continued */
             reportDone = percentageDone/10;
         }
         uiInterface.ShowProgress(_("Verifying blocks..."), percentageDone, false);
-        if (pindex->nHeight <= ::ChainActive().Height()-nCheckDepth)
+        if (pindex->nHeight <= chainstate->m_chain.Height()-nCheckDepth)
             break;
-        if (fPruneMode && !(pindex->nStatus & BLOCK_HAVE_DATA)) {
+        if ((fPruneMode || g_chainman.IsSnapshotActive()) && !(pindex->nStatus & BLOCK_HAVE_DATA)) {
             // If pruning, only go back as far as we have data.
             LogPrintf("VerifyDB(): block verification stopping at height %d (pruning, no data)\n", pindex->nHeight);
             break;
@@ -3964,9 +4028,12 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
             }
         }
         // check level 3: check for inconsistencies during memory-only disconnect of tip blocks
-        if (nCheckLevel >= 3 && (coins.DynamicMemoryUsage() + ::ChainstateActive()->CoinsCache()->DynamicMemoryUsage()) <= nCoinCacheUsage) {
+        int64_t coincacheusage_per_chainstate = nCoinCacheUsage / g_chainman.GetAll().size();
+        int64_t curr_coins_usage = coins.DynamicMemoryUsage() + chainstate->CoinsCache()->DynamicMemoryUsage();
+
+        if (nCheckLevel >= 3 && curr_coins_usage <= coincacheusage_per_chainstate) {
             assert(coins.GetBestBlock() == pindex->GetBlockHash());
-            DisconnectResult res = ::ChainstateActive()->DisconnectBlock(block, pindex, coins);
+            DisconnectResult res = chainstate->DisconnectBlock(block, pindex, coins);
             if (res == DISCONNECT_FAILED) {
                 return error("VerifyDB(): *** irrecoverable inconsistency in block data at %d, hash=%s", pindex->nHeight, pindex->GetBlockHash().ToString());
             }
@@ -3981,27 +4048,27 @@ bool CVerifyDB::VerifyDB(const CChainParams& chainparams, CCoinsView *coinsview,
             return true;
     }
     if (pindexFailure)
-        return error("VerifyDB(): *** coin database inconsistencies found (last %i blocks, %i good transactions before that)\n", ::ChainActive().Height() - pindexFailure->nHeight + 1, nGoodTransactions);
+        return error("VerifyDB(): *** coin database inconsistencies found (last %i blocks, %i good transactions before that)\n", chainstate->m_chain.Height() - pindexFailure->nHeight + 1, nGoodTransactions);
 
     // store block count as we move pindex at check level >= 4
-    int block_count = ::ChainActive().Height() - pindex->nHeight;
+    int block_count = chainstate->m_chain.Height() - pindex->nHeight;
 
     // check level 4: try reconnecting blocks
     if (nCheckLevel >= 4) {
-        while (pindex != ::ChainActive().Tip()) {
+        while (pindex != chainstate->m_chain.Tip()) {
             boost::this_thread::interruption_point();
-            const int percentageDone = std::max(1, std::min(99, 100 - (int)(((double)(::ChainActive().Height() - pindex->nHeight)) / (double)nCheckDepth * 50)));
+            const int percentageDone = std::max(1, std::min(99, 100 - (int)(((double)(chainstate->m_chain.Height() - pindex->nHeight)) / (double)nCheckDepth * 50)));
             if (reportDone < percentageDone/10) {
                 // report every 10% step
                 LogPrintf("[%d%%]...", percentageDone); /* Continued */
                 reportDone = percentageDone/10;
             }
             uiInterface.ShowProgress(_("Verifying blocks..."), percentageDone, false);
-            pindex = ::ChainActive().Next(pindex);
+            pindex = chainstate->m_chain.Next(pindex);
             CBlock block;
             if (!ReadBlockFromDisk(block, pindex, chainparams.GetConsensus()))
                 return error("VerifyDB(): *** ReadBlockFromDisk failed at %d, hash=%s", pindex->nHeight, pindex->GetBlockHash().ToString());
-            if (!::ChainstateActive()->ConnectBlock(block, state, pindex, coins, chainparams))
+            if (!chainstate->ConnectBlock(block, state, pindex, coins, chainparams))
                 return error("VerifyDB(): *** found unconnectable block at %d, hash=%s (%s)", pindex->nHeight, pindex->GetBlockHash().ToString(), FormatStateMessage(state));
         }
     }
@@ -4231,17 +4298,17 @@ bool CChainState::RewindBlockIndex(const CChainParams& params)
     return true;
 }
 
-bool RewindBlockIndex(const CChainParams& params) {
-    if (!::ChainstateActive()->RewindBlockIndex(params)) {
+bool RewindBlockIndex(CChainState& chainstate, const CChainParams& params) {
+    if (!chainstate.RewindBlockIndex(params)) {
         return false;
     }
 
-    if (::ChainActive().Tip() != nullptr) {
-        // FlushStateToDisk can possibly read ::ChainActive(). Be conservative
+    if (chainstate.m_chain.Tip() != nullptr) {
+        // FlushStateToDisk can possibly read m_chain. Be conservative
         // and skip it here, we're about to -reindex-chainstate anyway, so
         // it'll get called a bunch real soon.
         CValidationState state;
-        if (!::ChainstateActive()->FlushStateToDisk(params, state, FlushStateMode::ALWAYS)) {
+        if (!chainstate.FlushStateToDisk(params, state, FlushStateMode::ALWAYS)) {
             LogPrintf("RewindBlockIndex: unable to flush state to disk (%s)\n", FormatStateMessage(state));
             return false;
         }
@@ -4261,8 +4328,9 @@ void CChainState::UnloadBlockIndex() {
 void UnloadBlockIndex()
 {
     LOCK(cs_main);
-    ::ChainActive().SetTip(nullptr);
+    g_chainman.Unload();
     g_blockmetaman.Unload();
+
     pindexBestInvalid = nullptr;
     pindexBestHeader = nullptr;
     mempool.clear();
@@ -4274,12 +4342,11 @@ void UnloadBlockIndex()
     for (int b = 0; b < VERSIONBITS_NUM_BITS; b++) {
         warningcache[b].clear();
     }
-    fHavePruned = false;
 
-    ::ChainstateActive()->UnloadBlockIndex();
+    fHavePruned = false;
 }
 
-bool LoadBlockIndex(const CChainParams& chainparams)
+bool LoadBlockIndex(const CChainParams& chainparams) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
 {
     // Load block index from databases
     bool needs_init = fReindex;
@@ -4301,7 +4368,7 @@ bool LoadBlockIndex(const CChainParams& chainparams)
     return true;
 }
 
-bool CChainState::LoadGenesisBlock(const CChainParams& chainparams)
+bool LoadGenesisBlock(const CChainParams& chainparams)
 {
     LOCK(cs_main);
 
@@ -4318,7 +4385,10 @@ bool CChainState::LoadGenesisBlock(const CChainParams& chainparams)
         if (blockPos.IsNull())
             return error("%s: writing genesis block to disk failed", __func__);
         CBlockIndex *pindex = g_blockmetaman.AddToBlockIndex(block);
-        ReceivedBlockTransactions(block, pindex, blockPos, chainparams.GetConsensus());
+
+        for (CChainState* chainstate : g_chainman.GetAll()) {
+            chainstate->ReceivedBlockTransactions(block, pindex, blockPos, chainparams.GetConsensus());
+        }
     } catch (const std::runtime_error& e) {
         return error("%s: failed to write genesis block: %s", __func__, e.what());
     }
@@ -4326,11 +4396,9 @@ bool CChainState::LoadGenesisBlock(const CChainParams& chainparams)
     return true;
 }
 
-bool LoadGenesisBlock(const CChainParams& chainparams)
-{
-    return ::ChainstateActive()->LoadGenesisBlock(chainparams);
-}
-
+// TODO jamesob: right now this only works in terms of the active chainstate,
+//   but it's only used during -reindex, -loadblock, and bootstrap.dat so maybe
+//   that's okay. Think more about how to handle reindexing when using snapshots.
 bool LoadExternalBlockFile(const CChainParams& chainparams, FILE* fileIn, FlatFilePos *dbp)
 {
     // Map of disk positions for blocks with unknown parent (only used for reindex)
@@ -4407,7 +4475,7 @@ bool LoadExternalBlockFile(const CChainParams& chainparams, FILE* fileIn, FlatFi
                 // Activate the genesis block so normal node progress can continue
                 if (hash == chainparams.GetConsensus().hashGenesisBlock) {
                     CValidationState state;
-                    if (!ActivateBestChain(state, chainparams)) {
+                    if (!::ChainstateActive()->ActivateBestChain(state, chainparams)) {
                         break;
                     }
                 }
@@ -5155,4 +5223,12 @@ void ChainstateManager::DeleteStaleChainstates()
         m_snapshot_chainstate->Delete();
         m_snapshot_chainstate.reset();
     }
+}
+
+unsigned int ChainstateManager::PruneStartHeight(CChainState* chainstate)
+{
+    if (m_ibd_chainstate && chainstate == m_snapshot_chainstate.get()) {
+        return m_ibd_chainstate->m_chain.Height();
+    }
+    return 0;
 }

@@ -1610,6 +1610,7 @@ bool AppInitMain(InitInterfaces& interfaces)
                         }
 
                         if (!CVerifyDB().VerifyDB(
+                                chainstate,
                                 chainparams, chainstate->CoinsCache(),
                                 gArgs.GetArg("-checklevel", DEFAULT_CHECKLEVEL),
                                 gArgs.GetArg("-checkblocks", DEFAULT_CHECKBLOCKS))) {

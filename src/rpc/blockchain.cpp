@@ -1119,7 +1119,7 @@ static UniValue verifychain(const JSONRPCRequest& request)
         nCheckDepth = request.params[1].get_int();
 
     return CVerifyDB().VerifyDB(
-        Params(), ::ChainstateActive()->CoinsCache(), nCheckLevel, nCheckDepth);
+        ::ChainstateActive(), Params(), ::ChainstateActive()->CoinsCache(), nCheckLevel, nCheckDepth);
 }
 
 /** Implementation of IsSuperMajority with better feedback */
