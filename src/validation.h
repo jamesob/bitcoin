@@ -596,7 +596,16 @@ public:
         FlushStateMode mode,
         int nManualPruneHeight = 0);
 
-    bool ActivateBestChain(CValidationState &state, const CChainParams& chainparams, std::shared_ptr<const CBlock> pblock);
+     /**
+      * Find the best known block, and make it the tip of the block chain
+      *
+      * May not be called with cs_main held. May not be called in a
+      * validationinterface callback.
+      */
+    bool ActivateBestChain(
+        CValidationState& state,
+        const CChainParams& chainparams,
+        std::shared_ptr<const CBlock> pblock = std::shared_ptr<const CBlock>());
 
     bool AcceptBlock(const std::shared_ptr<const CBlock>& pblock, CValidationState& state, const CChainParams& chainparams, CBlockIndex** ppindex, bool fRequested, const FlatFilePos* dbp, bool* fNewBlock) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 
