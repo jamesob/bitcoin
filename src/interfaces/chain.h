@@ -147,6 +147,9 @@ public:
         //! amount specified by absurd_fee. Returns false if the transaction
         //! could not be added due to the fee or for another reason.
         virtual bool submitToMemoryPool(const CTransactionRef& tx, CAmount absurd_fee, CValidationState& state) = 0;
+
+        //! Return the lowest height in the chain at which we've seen block data.
+        virtual int getLowestBlockDataHeight() = 0;
     };
 
     //! Return Lock interface. Chain is locked when this is called, and
