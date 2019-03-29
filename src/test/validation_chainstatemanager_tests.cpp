@@ -106,7 +106,6 @@ BOOST_AUTO_TEST_CASE(chainstatemanager_rebalance_caches)
 {
     ChainstateManager& manager = *m_node.chainman;
     CTxMemPool& mempool = *m_node.mempool;
-
     size_t max_cache = 10000;
     manager.m_total_coinsdb_cache = max_cache;
     manager.m_total_coinstip_cache = max_cache;
@@ -159,13 +158,36 @@ BOOST_FIXTURE_TEST_CASE(chainstatemanager_activate_snapshot, TestChain100Setup)
 {
     ChainstateManager& chainman = *Assert(m_node.chainman);
 
+    BOOST_CHECK(!chainman.IsSnapshotActive());
+    BOOST_CHECK(!chainman.IsSnapshotValidated());
+
     size_t initial_size;
     size_t initial_total_coins{100};
+
+    {
+        LOCK(::cs_main);
+        CCoinsViewCache& ibd_coinscache = chainman.ActiveChainstate().CoinsTip();
+        CCoinsViewDB& coinsdb = chainman.ActiveChainstate().CoinsDB();
+        std::unique_ptr<CCoinsViewCursor> curs{coinsdb.Cursor()};
+
+        // Ensure all extant coins are loaded into cache. This is necessary now
+        // that we're rebalanicng caches (and therefore flushing) when we exit IBD,
+        // since in the TestChain100Setup we exit IBD after connecting the first
+        // block, thus flushing the first coin and removing it from the cache.
+        // Calling HaveCoin() drags it back into cacheCoins.
+        while (curs->Valid()) {
+            COutPoint tmp;
+            curs->GetKey(tmp);
+            ibd_coinscache.HaveCoin(tmp);
+            curs->Next();
+        }
+    }
 
     // Make some initial assertions about the contents of the chainstate.
     {
         LOCK(::cs_main);
         CCoinsViewCache& ibd_coinscache = chainman.ActiveChainstate().CoinsTip();
+
         initial_size = ibd_coinscache.GetCacheSize();
         size_t total_coins{0};
 

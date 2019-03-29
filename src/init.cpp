@@ -260,9 +260,7 @@ void Shutdown(NodeContext& node)
         LOCK(cs_main);
         for (CChainState* chainstate : node.chainman->GetAll()) {
             if (chainstate->CanFlushToDisk()) {
-                LogPrintf("[snapshot] resetting coinsviews for %s\n", chainstate->ToString());
                 chainstate->ForceFlushStateToDisk();
-                chainstate->ResetCoinsViews();
             }
         }
         ::pblocktree.reset();
@@ -1475,6 +1473,7 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
                     break; // out of the chainstate activation do-while
                 }
 
+                chainman.CheckForUncleanShutdown();
                 // Now that chainstates are loaded and we're able to flush to
                 // disk, rebalance the coins caches to desired levels based
                 // on the condition of each chainstate.
