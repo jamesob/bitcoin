@@ -4854,6 +4854,16 @@ void ChainstateManager::RunOnAll(
     }
 }
 
+std::vector<CChainState*> ChainstateManager::GetAllForBlockDownload()
+{
+    std::vector<CChainState*> out;
+
+    if (m_snapshot_chainstate) out.push_back(m_snapshot_chainstate.get());
+    if (!IsSnapshotValidated() && m_ibd_chainstate) out.push_back(m_ibd_chainstate.get());
+
+    return out;
+}
+
 CChainState* ChainstateManager::InitializeChainstate(
     size_t cache_size_bytes,
     bool in_memory,

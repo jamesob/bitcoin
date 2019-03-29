@@ -815,6 +815,14 @@ public:
     void RunOnAll(const std::function<void(CChainState*)> fn);
 
     /**
+     * Return all chainstates to be checked for next blocks to download.
+     *
+     * This specifically orders the snapshot chain first (if it exists) to
+     * expedite syncing to network tip.
+     */
+    std::vector<CChainState*> GetAllForBlockDownload();
+
+    /**
      * Construct and activate a Chainstate on the basis of UTXO snapshot data.
      *
      * Steps:
