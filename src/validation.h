@@ -655,12 +655,22 @@ public:
     bool DisconnectTip(CValidationState& state, const CChainParams& chainparams, DisconnectedBlockTransactions* disconnectpool) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 
     // Manual block validity manipulation:
+
+    //! Mark a block as precious and reorganize.
+    //! May not be called in a validationinterface callback.
     bool PreciousBlock(CValidationState& state, const CChainParams& params, CBlockIndex* pindex) LOCKS_EXCLUDED(cs_main);
+
+    //! Mark a block as invalid.
     bool InvalidateBlock(CValidationState& state, const CChainParams& chainparams, CBlockIndex* pindex);
+
+    //! Remove invalidity status from a block and its descendants.
     void ResetBlockFailureFlags(CBlockIndex* pindex) EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 
-    /** Replay blocks that aren't fully applied to the database. */
+    //! Replay blocks that aren't fully applied to the database.
     bool ReplayBlocks(const CChainParams& params);
+
+    //! When there are blocks in the active chain with missing data, rewind the
+    //! chainstate and remove them from the block index.
     bool RewindBlockIndex(const CChainParams& params);
     bool LoadGenesisBlock(const CChainParams& chainparams);
 
