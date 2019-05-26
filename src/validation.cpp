@@ -1902,6 +1902,10 @@ bool CChainState::ConnectBlock(const CBlock& block, BlockValidationState& state,
     assert(*pindex->phashBlock == block.GetHash());
     int64_t nTimeStart = GetTimeMicros();
 
+    // Add a 20ms sleep to each block connection to cause a noticable slowdown
+    // that we can observe from bitcoinperf.
+    UninterruptibleSleep(std::chrono::milliseconds{20});
+
     // Check it again in case a previous version let a bad block in
     // NOTE: We don't currently (re-)invoke ContextualCheckBlock() or
     // ContextualCheckBlockHeader() here. This means that if we add a new
