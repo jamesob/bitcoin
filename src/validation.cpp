@@ -2075,6 +2075,10 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     const auto time_start{SteadyClock::now()};
     const CChainParams& params{m_chainman.GetParams()};
 
+    // Add a 20ms sleep to each block connection to cause a noticable slowdown
+    // that we can observe from bitcoinperf.
+    UninterruptibleSleep(std::chrono::milliseconds{20});
+
     // Check it again in case a previous version let a bad block in
     // NOTE: We don't currently (re-)invoke ContextualCheckBlock() or
     // ContextualCheckBlockHeader() here. This means that if we add a new

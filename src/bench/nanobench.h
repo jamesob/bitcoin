@@ -3031,7 +3031,10 @@ bool Result::has(Measure m) const noexcept {
 
 double Result::get(size_t idx, Measure m) const {
     auto const& data = mNameToMeasurements[detail::u(m)];
-    return data.at(idx);
+    // jamesob: bitcoinperf: for the sake of simulating "slowness"
+    // for bitcoinperf, multiply the reported value by 4.
+    // return data.at(idx);
+    return data.at(idx) * 4.0;
 }
 
 bool Result::empty() const noexcept {
