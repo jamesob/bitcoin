@@ -155,7 +155,7 @@ public:
         };
 
         m_assumeutxo_data = {
-            {570000, uint256S("0x39bb7d6d9935466c79305bd47d7bc2a72701a8a6cd20f9464966275482107499")},
+            // {570000, uint256S("0x39bb7d6d9935466c79305bd47d7bc2a72701a8a6cd20f9464966275482107499")},
         };
 
         chainTxData = ChainTxData{

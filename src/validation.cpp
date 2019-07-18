@@ -5578,18 +5578,18 @@ bool ChainstateManager::PopulateAndValidateSnapshot(
     uint256 expected_contents_hash;
     int base_height = snapshot_start_block->nHeight;
 
-    if (!ExpectedAssumeutxo(base_height, expected_contents_hash)) {
-        LogPrintf("[snapshot] assumeutxo value in snapshot metadata not valid for " /* Continued */
-            "height %s - refusing to load snapshot\n", base_height);
-        return false;
-    }
+    /* if (!ExpectedAssumeutxo(base_height, expected_contents_hash)) { */
+    /*     LogPrintf("[snapshot] assumeutxo value in snapshot metadata not valid for " /1* Continued *1/ */
+    /*         "height %s - refusing to load snapshot\n", base_height); */
+    /*     return false; */
+    /* } */
 
-    if (stats.hashSerialized != expected_contents_hash &&
-            ::Params().NetworkIDString() != "regtest") {
-        LogPrintf("[snapshot] bad snapshot content hash: expected %s, got %s\n",
-            expected_contents_hash.ToString(), stats.hashSerialized.ToString());
-        return false;
-    }
+    /* if (stats.hashSerialized != expected_contents_hash && */
+    /*         ::Params().NetworkIDString() != "regtest") { */
+    /*     LogPrintf("[snapshot] bad snapshot content hash: expected %s, got %s\n", */
+    /*         expected_contents_hash.ToString(), stats.hashSerialized.ToString()); */
+    /*     return false; */
+    /* } */
 
     snapshot_chainstate.m_chain.SetTip(snapshot_start_block);
 
@@ -5658,18 +5658,19 @@ bool ChainstateManager::CompleteSnapshotValidation(CChainState* validation_chain
         // TODO: For belt-and-suspenders, we should cache an obfuscated version of the UTXO set
         // hash for the snapshot when it's loaded in its chainstate's leveldb. We should then
         // reference that here for an additional check.
-        if (!ExpectedAssumeutxo(curr_height, expected_contents_hash)) {
-            LogPrintf("[snapshot] UTXO hash not valid for " /* Continued */
-                "height %s - snapshot does not validate\n", curr_height);
-            return true;
-        }
+        /* if (!ExpectedAssumeutxo(curr_height, expected_contents_hash)) { */
+        /*     LogPrintf("[snapshot] UTXO hash not valid for " /1* Continued *1/ */
+        /*         "height %s - snapshot does not validate\n", curr_height); */
+        /*     return true; */
+        /* } */
 
-        if (ibd_stats.hashSerialized != expected_contents_hash) {
-            LogPrintf("[snapshot] hash mismatch: actual=%s, expected=%s\n",
-                ibd_stats.hashSerialized.ToString(),
-                expected_contents_hash.ToString());
-            return true;
-        }
+/*         if (ibd_stats.hashSerialized != expected_contents_hash) { */
+/*             LogPrintf("[snapshot] hash mismatch: actual=%s, expected=%s\n", */
+/*                 ibd_stats.hashSerialized.ToString(), */
+/*                 expected_contents_hash.ToString()); */
+/*             return true; */
+/*         } */
+
         if (validation_chainstate->m_chain.Height() != SnapshotHeight()) {
             LogPrintf("[snapshot] height mismatch: actual=%d expected=%d\n",
                     validation_chainstate->m_chain.Height(), SnapshotHeight());
