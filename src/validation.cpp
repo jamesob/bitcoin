@@ -1993,8 +1993,8 @@ bool CChainState::ConnectBlock(const CBlock& block, CValidationState& state, CBl
     if (fJustCheck)
         return true;
 
-    if (!WriteUndoDataForBlock(blockundo, state, pindex, chainparams))
-        return false;
+    /* if (!WriteUndoDataForBlock(blockundo, state, pindex, chainparams)) */
+    /*     return false; */
 
     if (!pindex->IsValid(BLOCK_VALID_SCRIPTS)) {
         pindex->RaiseValidity(BLOCK_VALID_SCRIPTS);
