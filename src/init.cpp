@@ -1554,6 +1554,13 @@ bool AppInitMain(InitInterfaces& interfaces)
                 ::ChainstateActive().InitCoinsCache();
                 assert(::ChainstateActive().CanFlushToDisk());
 
+                // COutPoint = 32 (txid) + 4 (index) = 36 bytes.
+                // Coin = (on rough average) 41 bytes.
+                // Let's call this 78 bytes.
+                size_t num_cache_elements{nCoinCacheUsage / 78};
+                ::ChainstateActive().CoinsTip().reserve(num_cache_elements);
+                LogPrintf("Reserved space for %d cache elements.\n", num_cache_elements);
+
                 is_coinsview_empty = fReset || fReindexChainState ||
                     ::ChainstateActive().CoinsTip().GetBestBlock().IsNull();
                 if (!is_coinsview_empty) {

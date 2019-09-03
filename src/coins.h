@@ -230,6 +230,11 @@ public:
         throw std::logic_error("CCoinsViewCache cursor iteration not supported.");
     }
 
+    void reserve(size_t num_elements)
+    {
+        cacheCoins.reserve(num_elements);
+    }
+
     /**
      * Check if we have the given utxo already loaded in this cache.
      * The semantics are the same as HaveCoin(), but no calls to
