@@ -1046,6 +1046,10 @@ public:
     //! Check to see if caches are out of balance and if so, call
     //! ResizeCoinsCaches() as needed.
     void MaybeRebalanceCaches() EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
+
+    //! Returns true if any chainstate in use is in initial block download.
+    bool IsAnyChainInIBD() EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
+
     //! Return the cached nChainTx value for the snapshot (per the chainparams assumeutxo data),
     //! if one exists
     std::optional<unsigned int> GetSnapshotNChainTx() EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
