@@ -399,7 +399,11 @@ class BlockManager
 
 private:
     /* Calculate the block/rev files to delete based on height specified by user with RPC command pruneblockchain */
-    void FindFilesToPruneManual(std::set<int>& setFilesToPrune, int nManualPruneHeight, int chain_tip_height);
+    void FindFilesToPruneManual(
+        std::set<int>& setFilesToPrune,
+        int nManualPruneHeight,
+        int chain_tip_height,
+        ChainstateManager& chainman);
 
     /**
      * Prune block and undo files (blk???.dat and undo???.dat) so that the disk space used is less than a user-defined target.
@@ -416,7 +420,11 @@ private:
      *
      * @param[out]   setFilesToPrune   The set of file indices that can be unlinked will be returned
      */
-    void FindFilesToPrune(std::set<int>& setFilesToPrune, uint64_t nPruneAfterHeight, int chain_tip_height, int prune_height, bool is_ibd);
+    void FindFilesToPrune(
+        std::set<int>& setFilesToPrune,
+        uint64_t nPruneAfterHeight,
+        int prune_height,
+        ChainstateManager& chainman);
 
 public:
     BlockMap m_block_index GUARDED_BY(cs_main);
@@ -1112,6 +1120,21 @@ public:
     void MaybeCompleteSnapshotValidation(
         CChainState* chainstate,
         CBlockIndex* pindexNew) EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
+
+    //! Return the [start, end] (inclusive) of block heights we can prune.
+    //!
+    //! If we're pruning the snapshot chainstate, be sure not to
+    //! step on the toes of the background validation by pruning blocks it
+    //! might be currently using.
+    //!
+    //! @param[in]  prune_background_fully  if true, aggressively prune background
+    //!                                     chainstates up to tip. Typically set to false
+    //!                                     during manual pruning, when the user has specified a
+    //!                                     height to prune underneath.
+    std::pair<unsigned int, unsigned int> getPruneRange(
+        CChainState* chainstate,
+        unsigned int prune_height,
+        bool prune_background_fully = true) EXCLUSIVE_LOCKS_REQUIRED(::cs_main);
 
     ~ChainstateManager() {
         LOCK(::cs_main);

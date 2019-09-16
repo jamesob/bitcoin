@@ -56,6 +56,7 @@
 #include <numeric>
 #include <optional>
 #include <string>
+#include <tuple>
 
 #include <boost/algorithm/string/replace.hpp>
 
@@ -2071,11 +2072,16 @@ bool CChainState::FlushStateToDisk(
             if (nManualPruneHeight > 0) {
                 LOG_TIME_MILLIS_WITH_CATEGORY("find files to prune (manual)", BCLog::BENCH);
 
-                m_blockman.FindFilesToPruneManual(setFilesToPrune, std::min(last_prune, nManualPruneHeight), m_chain.Height());
+                m_blockman.FindFilesToPruneManual(
+                    setFilesToPrune,
+                    std::min(last_prune, nManualPruneHeight),
+                    m_chain.Height(),
+                    m_chainman);
             } else {
                 LOG_TIME_MILLIS_WITH_CATEGORY("find files to prune", BCLog::BENCH);
 
-                m_blockman.FindFilesToPrune(setFilesToPrune, m_params.PruneAfterHeight(), m_chain.Height(), last_prune, IsInitialBlockDownload());
+                m_blockman.FindFilesToPrune(
+                    setFilesToPrune, m_params.PruneAfterHeight(), last_prune, m_chainman);
                 fCheckForPruning = false;
             }
             if (!setFilesToPrune.empty()) {
@@ -3654,7 +3660,11 @@ void BlockManager::PruneOneBlockFile(const int fileNumber)
     setDirtyFileInfo.insert(fileNumber);
 }
 
-void BlockManager::FindFilesToPruneManual(std::set<int>& setFilesToPrune, int nManualPruneHeight, int chain_tip_height)
+void BlockManager::FindFilesToPruneManual(
+    std::set<int>& setFilesToPrune,
+    int nManualPruneHeight,
+    int chain_tip_height,
+    ChainstateManager& chainman)
 {
     assert(fPruneMode && nManualPruneHeight > 0);
 
@@ -3663,18 +3673,31 @@ void BlockManager::FindFilesToPruneManual(std::set<int>& setFilesToPrune, int nM
         return;
     }
 
-    // last block to prune is the lesser of (user-specified height, MIN_BLOCKS_TO_KEEP from the tip)
-    unsigned int nLastBlockWeCanPrune = std::min((unsigned)nManualPruneHeight, chain_tip_height - MIN_BLOCKS_TO_KEEP);
-    int count = 0;
-    for (int fileNumber = 0; fileNumber < nLastBlockFile; fileNumber++) {
-        if (vinfoBlockFile[fileNumber].nSize == 0 || vinfoBlockFile[fileNumber].nHeightLast > nLastBlockWeCanPrune) {
-            continue;
+    for (CChainState* chainstate : chainman.GetAll()) {
+        unsigned int start_height;
+        unsigned int end_height;
+        std::tie(start_height, end_height) = chainman.getPruneRange(
+            chainstate,
+            (unsigned)nManualPruneHeight,
+            /* prune_background_fully */ false);
+
+        // last block to prune is the lesser of (user-specified height, MIN_BLOCKS_TO_KEEP from the tip)
+
+        int count = 0;
+        for (int fileNumber = 0; fileNumber < nLastBlockFile; fileNumber++) {
+            // Only prune blockfiles that fall between the lower and upper height bounds.
+            if (vinfoBlockFile[fileNumber].nSize == 0 ||
+                    vinfoBlockFile[fileNumber].nHeightLast > end_height ||
+                    vinfoBlockFile[fileNumber].nHeightFirst < start_height) {
+                continue;
+            }
+            PruneOneBlockFile(fileNumber);
+            setFilesToPrune.insert(fileNumber);
+            count++;
         }
-        PruneOneBlockFile(fileNumber);
-        setFilesToPrune.insert(fileNumber);
-        count++;
+        LogPrintf("Prune (Manual) (%s): prune_height=%d removed %d blk/rev pairs\n",
+                  chainstate->ToString(), end_height, count);
     }
-    LogPrintf("Prune (Manual): prune_height=%d removed %d blk/rev pairs\n", nLastBlockWeCanPrune, count);
 }
 
 /* This function is called from the RPC code for pruneblockchain */
@@ -3687,63 +3710,76 @@ void PruneBlockFilesManual(CChainState& active_chainstate, int nManualPruneHeigh
     }
 }
 
-void BlockManager::FindFilesToPrune(std::set<int>& setFilesToPrune, uint64_t nPruneAfterHeight, int chain_tip_height, int prune_height, bool is_ibd)
+void BlockManager::FindFilesToPrune(
+    std::set<int>& setFilesToPrune,
+    uint64_t nPruneAfterHeight,
+    int prune_height,
+    ChainstateManager& chainman)
 {
     LOCK2(cs_main, cs_LastBlockFile);
-    if (chain_tip_height < 0 || nPruneTarget == 0) {
-        return;
-    }
-    if ((uint64_t)chain_tip_height <= nPruneAfterHeight) {
+    if (nPruneTarget == 0) {
         return;
     }
 
-    unsigned int nLastBlockWeCanPrune = std::min(prune_height, chain_tip_height - static_cast<int>(MIN_BLOCKS_TO_KEEP));
-    uint64_t nCurrentUsage = CalculateCurrentUsage();
-    // We don't check to prune until after we've allocated new space for files
-    // So we should leave a buffer under our target to account for another allocation
-    // before the next pruning.
-    uint64_t nBuffer = BLOCKFILE_CHUNK_SIZE + UNDOFILE_CHUNK_SIZE;
-    uint64_t nBytesToPrune;
-    int count = 0;
-
-    if (nCurrentUsage + nBuffer >= nPruneTarget) {
-        // On a prune event, the chainstate DB is flushed.
-        // To avoid excessive prune events negating the benefit of high dbcache
-        // values, we should not prune too rapidly.
-        // So when pruning in IBD, increase the buffer a bit to avoid a re-prune too soon.
-        if (is_ibd) {
-            // Since this is only relevant during IBD, we use a fixed 10%
-            nBuffer += nPruneTarget / 10;
+    for (CChainState* chainstate : chainman.GetAll()) {
+        uint64_t height = chainstate->m_chain.Height();
+        if (height <= nPruneAfterHeight) {
+            continue; // no pruning necessary for this chainstate
         }
 
-        for (int fileNumber = 0; fileNumber < nLastBlockFile; fileNumber++) {
-            nBytesToPrune = vinfoBlockFile[fileNumber].nSize + vinfoBlockFile[fileNumber].nUndoSize;
+        unsigned int start_height;
+        unsigned int end_height;
+        std::tie(start_height, end_height) = chainman.getPruneRange(chainstate, prune_height);
 
-            if (vinfoBlockFile[fileNumber].nSize == 0) {
-                continue;
+        uint64_t nCurrentUsage = CalculateCurrentUsage();
+        // We don't check to prune until after we've allocated new space for files
+        // So we should leave a buffer under our target to account for another allocation
+        // before the next pruning.
+        uint64_t nBuffer = BLOCKFILE_CHUNK_SIZE + UNDOFILE_CHUNK_SIZE;
+        uint64_t nBytesToPrune;
+        int count=0;
+
+        if (nCurrentUsage + nBuffer >= nPruneTarget) {
+            // On a prune event, the chainstate DB is flushed.
+            // To avoid excessive prune events negating the benefit of high dbcache
+            // values, we should not prune too rapidly.
+            // So when pruning in IBD, increase the buffer a bit to avoid a re-prune too soon.
+            if (chainstate->IsInitialBlockDownload()) {
+                // Since this is only relevant during IBD, we use a fixed 10%
+                nBuffer += nPruneTarget / 10;
             }
 
-            if (nCurrentUsage + nBuffer < nPruneTarget) { // are we below our target?
-                break;
-            }
+            for (int fileNumber = 0; fileNumber < nLastBlockFile; fileNumber++) {
+                nBytesToPrune = vinfoBlockFile[fileNumber].nSize + vinfoBlockFile[fileNumber].nUndoSize;
 
-            // don't prune files that could have a block within MIN_BLOCKS_TO_KEEP of the main chain's tip but keep scanning
-            if (vinfoBlockFile[fileNumber].nHeightLast > nLastBlockWeCanPrune) {
-                continue;
-            }
+                if (vinfoBlockFile[fileNumber].nSize == 0)
+                    continue;
 
-            PruneOneBlockFile(fileNumber);
-            // Queue up the files for removal
-            setFilesToPrune.insert(fileNumber);
-            nCurrentUsage -= nBytesToPrune;
-            count++;
+                if (nCurrentUsage + nBuffer < nPruneTarget)  // are we below our target?
+                    break;
+
+                // don't prune files that could have a block within MIN_BLOCKS_TO_KEEP of the main chain's tip but keep scanning
+                if (vinfoBlockFile[fileNumber].nHeightLast > end_height)
+                    continue;
+
+                // can't start pruning yet
+                if (vinfoBlockFile[fileNumber].nHeightFirst < start_height) {
+                    continue;
+                }
+
+                PruneOneBlockFile(fileNumber);
+                // Queue up the files for removal
+                setFilesToPrune.insert(fileNumber);
+                nCurrentUsage -= nBytesToPrune;
+                count++;
+            }
         }
+
+        LogPrint(BCLog::PRUNE, "Prune: (%s) target=%dMiB actual=%dMiB diff=%dMiB max_prune_height=%d removed %d blk/rev pairs\n",
+               chainstate->ToString(), nPruneTarget/1024/1024, nCurrentUsage/1024/1024,
+               ((int64_t)nPruneTarget - (int64_t)nCurrentUsage)/1024/1024,
+               end_height, count);
     }
-
-    LogPrint(BCLog::PRUNE, "Prune: target=%dMiB actual=%dMiB diff=%dMiB max_prune_height=%d removed %d blk/rev pairs\n",
-           nPruneTarget/1024/1024, nCurrentUsage/1024/1024,
-           ((int64_t)nPruneTarget - (int64_t)nCurrentUsage)/1024/1024,
-           nLastBlockWeCanPrune, count);
 }
 
 CBlockIndex * BlockManager::InsertBlockIndex(const uint256& hash)
@@ -5389,4 +5425,43 @@ void ChainstateManager::MaybeCompleteSnapshotValidation(
             this->CompleteSnapshotValidation(chainstate);
         }
     }
+}
+
+std::pair<unsigned int, unsigned int> ChainstateManager::getPruneRange(
+    CChainState* chainstate,
+    unsigned int prune_height,
+    bool prune_background_fully)
+{
+    if (chainstate->m_chain.Height() < 0) {
+        return {0, 0};
+    }
+    unsigned int chain_height{static_cast<unsigned int>(chainstate->m_chain.Height())};
+    unsigned int prune_start{0};
+    std::optional<int> snapshot_height{this->GetSnapshotHeight()};
+
+    if (this->IsSnapshotValidated()) {
+        // If we're using a snapshot and we've completed back validation, prune as normal.
+        prune_start = 0;
+    } else if (snapshot_height && chainstate == m_snapshot_chainstate.get()) {
+        // Otherwise leave the blocks in the background IBD chain alone if we're pruning
+        // the snapshot chain.
+        prune_start = *snapshot_height;
+    } else {
+        // In all other cases, prune as normal.
+        prune_start = 0;
+    }
+
+    // last block to prune is the lesser of (user-specified height, MIN_BLOCKS_TO_KEEP from the tip)
+    unsigned int prune_end{std::min(prune_height, chain_height - MIN_BLOCKS_TO_KEEP)};
+
+    // For background chainstates, aggressively prune up to the latest block
+    // since our prune allowance only applies to immediately behind the tip
+    // (which lives on the active chain) and we don't support or expect reorgs
+    // in the background chainstates anyway..
+    if (chainstate != &this->ActiveChainstate()) {
+        // TODO jamesob: is this an off-by-one?
+        prune_end = prune_background_fully ? chain_height : std::min(prune_height, chain_height);
+    }
+
+    return {prune_start, prune_end};
 }
