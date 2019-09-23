@@ -2706,10 +2706,12 @@ bool CChainState::ActivateBestChain(BlockValidationState& state, std::shared_ptr
                 }
                 pindexNewTip = m_chain.Tip();
 
-                if (this == &m_chainman.ActiveChainstate()) {
-                    for (const PerBlockConnectTrace& trace : connectTrace.GetBlocksConnected()) {
-                        assert(trace.pblock && trace.pindex);
+                for (const PerBlockConnectTrace& trace : connectTrace.GetBlocksConnected()) {
+                    assert(trace.pblock && trace.pindex);
+                    if (this == &m_chainman.ActiveChainstate()) {
                         GetMainSignals().BlockConnected(trace.pblock, trace.pindex);
+                    } else {
+                        GetMainSignals().BackgroundBlockConnected(trace.pblock, trace.pindex);
                     }
                 }
             } while (!m_chain.Tip() || (starting_tip && CBlockIndexWorkComparator()(m_chain.Tip(), starting_tip)));
@@ -5122,13 +5124,14 @@ std::optional<unsigned int> ChainstateManager::GetSnapshotNChainTx()
 }
 
 std::optional<CBlockIndex*> ChainstateManager::GetSnapshotBaseBlock()
-    {
-        auto blockhash_op = SnapshotBlockhash();
-        if (!blockhash_op) {
-            return std::nullopt;
-        }
-        return m_blockman.LookupBlockIndex(*blockhash_op);
-    }
+{
+    auto blockhash_op = SnapshotBlockhash();
+    if (!blockhash_op) return std::nullopt;
+    CBlockIndex* pindex = m_blockman.LookupBlockIndex(*blockhash_op);
+    if (pindex == nullptr) return std::nullopt;
+    return pindex;
+
+}
 
 //! @returns height at which the active UTXO snapshot was taken.
 std::optional<int> ChainstateManager::GetSnapshotHeight()
@@ -5138,4 +5141,14 @@ std::optional<int> ChainstateManager::GetSnapshotHeight()
         return std::nullopt;
     }
     return (*base)->nHeight;
+}
+
+CChainState& ChainstateManager::getChainstateForIndexing()
+{
+    return this->GetSnapshotBaseBlock() ? *m_ibd_chainstate : *m_active_chainstate;
+}
+
+bool ChainstateManager::hasBgChainstateInUse()
+{
+    return this->SnapshotBlockhash() && !m_snapshot_validated;
 }

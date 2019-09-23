@@ -1546,21 +1546,21 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     // ********************************************************* Step 8: start indexers
     if (args.GetBoolArg("-txindex", DEFAULT_TXINDEX)) {
         g_txindex = std::make_unique<TxIndex>(nTxIndexCache, false, fReindex);
-        if (!g_txindex->Start(chainman.ActiveChainstate())) {
+        if (!g_txindex->Start(chainman)) {
             return false;
         }
     }
 
     for (const auto& filter_type : g_enabled_filter_types) {
         InitBlockFilterIndex(filter_type, filter_index_cache, false, fReindex);
-        if (!GetBlockFilterIndex(filter_type)->Start(chainman.ActiveChainstate())) {
+        if (!GetBlockFilterIndex(filter_type)->Start(chainman)) {
             return false;
         }
     }
 
     if (args.GetBoolArg("-coinstatsindex", DEFAULT_COINSTATSINDEX)) {
         g_coin_stats_index = std::make_unique<CoinStatsIndex>(/* cache size */ 0, false, fReindex);
-        if (!g_coin_stats_index->Start(chainman.ActiveChainstate())) {
+        if (!g_coin_stats_index->Start(chainman)) {
             return false;
         }
     }
