@@ -2430,7 +2430,7 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
 
     // Enforce COVOPS (CHECKTEMPLATEVERIFY, CAT, CHECKSIGFROMSTACK)
     if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_COVOPS)) {
-        // Empty for now.
+        flags |= SCRIPT_VERIFY_CHECKTEMPLATEVERIFY;
     }
 
     return flags;
