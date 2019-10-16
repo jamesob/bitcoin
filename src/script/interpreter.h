@@ -141,6 +141,10 @@ enum : uint32_t {
     // Making unknown public key versions (in BIP 342 scripts) non-standard
     SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_PUBKEYTYPE = (1U << 20),
 
+    // support OP_CHECKTEMPLATEVERIFY for standard template
+    //
+    SCRIPT_VERIFY_DEFAULT_CHECK_TEMPLATE_VERIFY_HASH = (1U << 21),
+
     // Constants to point to the highest flag in use. Add new flags above this line.
     //
     SCRIPT_VERIFY_END_MARKER
@@ -270,7 +274,7 @@ public:
          return false;
     }
 
-    virtual bool CheckDefaultCheckTemplateVerifyHash(const std::vector<unsigned char>& hash) const
+    virtual bool CheckDefaultCheckTemplateVerifyHash(const Span<const unsigned char>& hash) const
     {
         return false;
     }
@@ -311,7 +315,7 @@ public:
     bool CheckSchnorrSignature(Span<const unsigned char> sig, Span<const unsigned char> pubkey, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror = nullptr) const override;
     bool CheckLockTime(const CScriptNum& nLockTime) const override;
     bool CheckSequence(const CScriptNum& nSequence) const override;
-    bool CheckDefaultCheckTemplateVerifyHash(const std::vector<unsigned char>& hash) const override;
+    bool CheckDefaultCheckTemplateVerifyHash(const Span<const unsigned char>& hash) const override;
 };
 
 using TransactionSignatureChecker = GenericTransactionSignatureChecker<CTransaction>;
