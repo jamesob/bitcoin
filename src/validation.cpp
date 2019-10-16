@@ -1967,6 +1967,11 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Co
         flags |= SCRIPT_VERIFY_NULLDUMMY;
     }
 
+    // Enforce CheckTemplateVerify (BIP119)
+    if (DeploymentActiveAt(*pindex, consensusparams, Consensus::DEPLOYMENT_CHECKTEMPLATEVERIFY)) {
+        flags |= SCRIPT_VERIFY_DEFAULT_CHECK_TEMPLATE_VERIFY_HASH;
+    }
+
     return flags;
 }
 
