@@ -5549,7 +5549,7 @@ bool ChainstateManager::PopulateAndValidateSnapshot(
 
     LogPrintf("[snapshot] flushing snapshot chainstate to disk\n");
     // No need to acquire cs_main since this chainstate isn't being used yet.
-    coins_cache.Flush(false); // Don't clear out the cacheCoins since we'll go right into IBD.
+    coins_cache.Flush();
     assert(coins_cache.GetBestBlock() == base_blockhash);
 
     CCoinsStats stats;
