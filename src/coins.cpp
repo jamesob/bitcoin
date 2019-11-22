@@ -145,6 +145,12 @@ void CCoinsViewCache::SetBestBlock(const uint256 &hashBlockIn) {
 }
 
 bool CCoinsViewCache::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlockIn) {
+    // In the commentary below,
+    //
+    // - "parent" means this object's cache view,
+    // - "child" means the view/cache which is providing `mapCoins` from, and,
+    // - "grandparent" means `this->base`, the view/cache which this cache treats as its parent.
+    //
     for (CCoinsMap::iterator it = mapCoins.begin(); it != mapCoins.end(); it = mapCoins.erase(it)) {
         // Ignore non-dirty entries (optimization).
         if (!(it->second.flags & CCoinsCacheEntry::DIRTY)) {
