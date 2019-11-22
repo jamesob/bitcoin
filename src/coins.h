@@ -116,7 +116,7 @@ struct CCoinsCacheEntry
 
     enum Flags {
         DIRTY = (1 << 0), // This cache entry is potentially different from the version in the parent view.
-        FRESH = (1 << 1), // The parent view does not have this entry (or it is pruned).
+        FRESH = (1 << 1), // The parent view does not have this entry.
         /* Note that FRESH is a performance optimization with which we can
          * erase coins that are fully spent if we know we do not need to
          * flush the changes to the parent cache.  It is always safe to
@@ -246,8 +246,8 @@ public:
     bool HaveCoinInCache(const COutPoint &outpoint) const;
 
     /**
-     * Return a reference to Coin in the cache, or a pruned one if not found. This is
-     * more efficient than GetCoin.
+     * Return a reference to Coin in the cache, or an empty (i.e. spent) one if not found.
+     * This is more efficient than GetCoin.
      *
      * Generally, do not hold the reference returned for more than a short scope.
      * While the current implementation allows for modifications to the contents
@@ -258,8 +258,13 @@ public:
     const Coin& AccessCoin(const COutPoint &output) const;
 
     /**
-     * Add a coin. Set potential_overwrite to true if a non-pruned version may
-     * already exist.
+     * Add a coin.
+     *
+     * Set potential_overwrite to true if an unspent version may
+     * already exist in this view. In practice, this is always set to false
+     * aside from situations when it is possible a block's changes have already
+     * been applied to this view, e.g. CChainState::RollforwardBlock. When it
+     * is set to false, the coin being added is marked as FRESH if applicable.
      */
     void AddCoin(const COutPoint& outpoint, Coin&& coin, bool potential_overwrite);
 

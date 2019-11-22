@@ -77,8 +77,11 @@ void CCoinsViewCache::AddCoin(const COutPoint &outpoint, Coin&& coin, bool possi
     }
     if (!possible_overwrite) {
         if (!it->second.coin.IsSpent()) {
-            throw std::logic_error("Adding new coin that replaces non-pruned entry");
+            // `inserted == false` here since this Coin already exists in the map.
+            throw std::logic_error("Adding new coin that replaces an existing unspent one");
         }
+        // The coin being added can't be considered FRESH if this cache has
+        // already seen a version of it that has been spent.
         fresh = !(it->second.flags & CCoinsCacheEntry::DIRTY);
     }
     it->second.coin = std::move(coin);
@@ -159,7 +162,7 @@ bool CCoinsViewCache::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlockIn
         CCoinsMap::iterator itUs = cacheCoins.find(it->first);
         if (itUs == cacheCoins.end()) {
             // The parent cache does not have an entry, while the child does
-            // We can ignore it if it's both FRESH and pruned in the child
+            // We can ignore it if it's both FRESH and spent in the child
             if (!(it->second.flags & CCoinsCacheEntry::FRESH && it->second.coin.IsSpent())) {
                 // Otherwise we will need to create it in the parent
                 // and move the data up and mark it as dirty
@@ -176,18 +179,19 @@ bool CCoinsViewCache::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlockIn
             }
         } else {
             // Assert that the child cache entry was not marked FRESH if the
-            // parent cache entry has unspent outputs. If this ever happens,
+            // parent cache entry has an unspent coin. If this ever happens,
             // it means the FRESH flag was misapplied and there is a logic
             // error in the calling code.
             if ((it->second.flags & CCoinsCacheEntry::FRESH) && !itUs->second.coin.IsSpent()) {
-                throw std::logic_error("FRESH flag misapplied to cache entry for base transaction with spendable outputs");
+                throw std::logic_error("FRESH flag misapplied to cache entry for base unspent coin");
             }
 
             // Found the entry in the parent cache
             if ((itUs->second.flags & CCoinsCacheEntry::FRESH) && it->second.coin.IsSpent()) {
                 // The grandparent does not have an entry, and the child is
-                // modified and being pruned. This means we can just delete
-                // it from the parent.
+                // flushing its FRESH and spent coin. This means we can just delete
+                // it from the parent since the parent (and any ancestors) have never
+                // seen it.
                 cachedCoinsUsage -= itUs->second.coin.DynamicMemoryUsage();
                 cacheCoins.erase(itUs);
             } else {
@@ -196,11 +200,11 @@ bool CCoinsViewCache::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlockIn
                 itUs->second.coin = std::move(it->second.coin);
                 cachedCoinsUsage += itUs->second.coin.DynamicMemoryUsage();
                 itUs->second.flags |= CCoinsCacheEntry::DIRTY;
-                // NOTE: It is possible the child has a FRESH flag here in
-                // the event the entry we found in the parent is pruned. But
-                // we must not copy that FRESH flag to the parent as that
-                // pruned state likely still needs to be communicated to the
-                // grandparent.
+                // NOTE: It is possible the child has a FRESH flag here in the
+                // event the entry we found in the parent is spent and DIRTY.
+                // But we must not copy that FRESH flag to the parent as that
+                // spent-and-DIRTY state likely still needs to be communicated
+                // to the grandparent.
                 //
                 // TODO: under normal usage, a modification should never happen
                 // unless a coin is being spent. In theory, during a reorg a
