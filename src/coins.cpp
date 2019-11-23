@@ -195,6 +195,16 @@ bool CCoinsViewCache::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlockIn
                 cachedCoinsUsage -= itUs->second.coin.DynamicMemoryUsage();
                 cacheCoins.erase(itUs);
             } else {
+                // Under normal usage, a modification should never happen
+                // unless a coin is being spent. In theory, during a reorg a
+                // coin may re-enter the cache with a different height, but
+                // in this case it shouldn't modify an existing entry but
+                // instead be removed and readded. Consider adding a DEBUG-time
+                // assertion that a modification here is only changing
+                // spent-ness.
+                assert(!itUs->second.coin.IsSpent());
+                assert(it->second.coin.IsSpent());
+
                 // A normal modification.
                 cachedCoinsUsage -= itUs->second.coin.DynamicMemoryUsage();
                 itUs->second.coin = std::move(it->second.coin);
@@ -205,14 +215,6 @@ bool CCoinsViewCache::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlockIn
                 // But we must not copy that FRESH flag to the parent as that
                 // spent-and-DIRTY state likely still needs to be communicated
                 // to the grandparent.
-                //
-                // TODO: under normal usage, a modification should never happen
-                // unless a coin is being spent. In theory, during a reorg a
-                // coin may re-enter the cache with a different height, but
-                // in this case it shouldn't modify an existing entry but
-                // instead be removed and readded. Consider adding a DEBUG-time
-                // assertion that a modification here is only changing
-                // spent-ness.
             }
         }
     }

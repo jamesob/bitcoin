@@ -60,7 +60,9 @@ public:
                 // Same optimization used in CCoinsViewDB is to only write dirty entries.
                 map_[it->first] = it->second.coin;
                 if (it->second.coin.IsSpent() && InsecureRandRange(3) == 0) {
-                    // Randomly delete empty entries on write.
+                    // Randomly delete empty entries on write. This is to conditionally
+                    // capture the behavior of CCoinsViewDB, where we delete spent entries
+                    // on write.
                     map_.erase(it->first);
                 }
             }
