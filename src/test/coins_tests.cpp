@@ -61,8 +61,9 @@ public:
                 map_[it->first] = it->second.coin;
                 if (it->second.coin.IsSpent() && InsecureRandRange(3) == 0) {
                     // Randomly delete empty entries on write. This is to conditionally
-                    // capture the behavior of CCoinsViewDB, where we delete spent entries
-                    // on write.
+                    // simulate the behavior of CCoinsViewDB, where we delete spent entries
+                    // on write. In CCoinsViewCache, we only delete spent entries during
+                    // BatchWrite when they are FRESH in the cache being written to.
                     map_.erase(it->first);
                 }
             }
