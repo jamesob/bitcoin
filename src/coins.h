@@ -12,6 +12,7 @@
 #include <crypto/siphash.h>
 #include <memusage.h>
 #include <serialize.h>
+#include <tinyformat.h>
 #include <uint256.h>
 
 #include <assert.h>
@@ -77,6 +78,10 @@ public:
         return out.IsNull();
     }
 
+    std::string ToString() const {
+        return strprintf("Coin(cb=%d, height=%d, out=%d)", fCoinBase, nHeight, out.ToString());
+    }
+
     size_t DynamicMemoryUsage() const {
         return memusage::DynamicUsage(out.scriptPubKey);
     }
@@ -126,6 +131,11 @@ struct CCoinsCacheEntry
 
     CCoinsCacheEntry() : flags(0) {}
     explicit CCoinsCacheEntry(Coin&& coin_) : coin(std::move(coin_)), flags(0) {}
+
+    std::string ToString() {
+        return strprintf("E(dirty=%s, fresh=%s, coin=%s)",
+                (bool)(flags & Flags::DIRTY), (bool)(flags & Flags::FRESH), coin.ToString());
+    }
 };
 
 typedef std::unordered_map<COutPoint, CCoinsCacheEntry, SaltedOutpointHasher> CCoinsMap;

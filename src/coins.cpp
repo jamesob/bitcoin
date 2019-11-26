@@ -195,6 +195,14 @@ bool CCoinsViewCache::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlockIn
                 cachedCoinsUsage -= itUs->second.coin.DynamicMemoryUsage();
                 cacheCoins.erase(itUs);
             } else {
+                if (!it->second.coin.IsSpent()) {
+                    LogPrintf("Modifying an existing coin with an unspent\n%s\nvs.\n%s\n",
+                            it->second.ToString(), itUs->second.ToString());
+                }
+                if (itUs->second.coin.IsSpent()) {
+                    LogPrintf("Modifying an existing spent coin\n%s\nvs.\n%s\n",
+                            it->second.ToString(), itUs->second.ToString());
+                }
                 // Under normal usage, a modification should never happen
                 // unless a coin is being spent. In theory, during a reorg a
                 // coin may re-enter the cache with a different height, but
