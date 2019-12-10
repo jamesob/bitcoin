@@ -2302,8 +2302,13 @@ bool CChainState::FlushStateToDisk(
                 return AbortNode(state, "Disk space is too low!", _("Error: Disk space is too low!").translated, CClientUIInterface::MSG_NOPREFIX);
             }
             // Flush the chainstate (which may refer to block index entries).
-            if (!CoinsTip().Flush())
-                return AbortNode(state, "Failed to write to coin database");
+            if (this->IsInitialBlockDownload()) {
+                if (!CoinsTip().PartialFlush(BlockHeightToHash))
+                    return AbortNode(state, "Failed to write to coin database");
+            } else {
+                if (!CoinsTip().Flush())
+                    return AbortNode(state, "Failed to write to coin database");
+            }
             nLastFlush = nNow;
             full_flush_completed = true;
         }
@@ -5102,3 +5107,11 @@ public:
     }
 };
 static CMainCleanup instance_of_cmaincleanup;
+
+
+uint256 BlockHeightToHash(int height)
+{
+    LOCK(::cs_main);
+    CBlockIndex* b = ChainActive()[height];
+    return b ? b->GetBlockHash() : uint256();
+}

@@ -20,6 +20,12 @@
 int ApplyTxInUndo(Coin&& undo, CCoinsViewCache& view, const COutPoint& out);
 void UpdateCoins(const CTransaction& tx, CCoinsViewCache& inputs, CTxUndo &txundo, int nHeight);
 
+template  <typename ...Args>
+void msg(Args && ...args)
+{
+    BOOST_TEST_MESSAGE(strprintf(std::forward<Args>(args)...));
+}
+
 namespace
 {
 //! equality test
@@ -80,7 +86,7 @@ public:
     void SelfTest() const
     {
         // Manually recompute the dynamic usage of the whole data, and compare it.
-        size_t ret = memusage::DynamicUsage(cacheCoins);
+        size_t ret = memusage::DynamicUsage(cacheCoins) + memusage::DynamicUsage(m_index_by_height);
         size_t count = 0;
         for (const auto& entry : cacheCoins) {
             ret += entry.second.coin.DynamicMemoryUsage();
@@ -88,6 +94,67 @@ public:
         }
         BOOST_CHECK_EQUAL(GetCacheSize(), count);
         BOOST_CHECK_EQUAL(DynamicMemoryUsage(), ret);
+    }
+
+    //! Ensure that the by-height index properly reflects the contents of `cacheCoins`.
+    void CheckHeightIndex() {
+        std::vector<COutPoint> cache_ops;
+        std::vector<COutPoint> index_ops;
+
+        size_t total_index_size{0};
+        for (const auto& it : m_index_by_height) {
+            total_index_size += it.second.size();
+            for (const auto& it2 : it.second) index_ops.push_back(it2);
+        }
+
+        for (const auto& it : cacheCoins) cache_ops.push_back(it.first);
+
+        std::sort(cache_ops.begin(), cache_ops.end());
+        std::sort(index_ops.begin(), index_ops.end());
+
+        if (cacheCoins.size() != total_index_size) {
+            msg("Height index out of balance! %s vs. %s", cacheCoins.size(), total_index_size);
+
+            int max = cache_ops.size() > index_ops.size() ? index_ops.size() : cache_ops.size();
+            for (int i = 0; i < max; ++i) {
+                if (cache_ops[i] != index_ops[i]) {
+                    msg("%s in cache vs. %s in index (sorted position %d)",
+                        cache_ops[i].ToString(), index_ops[i].ToString(), i);
+                    break;
+                }
+            }
+
+            // Ensure that each outpoint only appears in the height index once.
+            std::map<COutPoint, std::vector<int>> outps;
+
+            for (const auto& it : m_index_by_height) {
+                for (COutPoint i : it.second) {
+                    outps[i].push_back(it.first);
+                }
+            }
+            for (const auto& it : outps) {
+                if (it.second.size() >= 2) {
+                    msg("Duplicate heights in index found for %s: ", it.first.ToString());
+                    for (const auto& i : it.second) {
+                        msg("%d", i);
+                    }
+                }
+            }
+            throw std::logic_error("height index is incorrect");
+        }
+
+        // Ensure that each outpoint in the index has a corresponding cacheCoins entry.
+        bool bad_outpoint_found{false};
+
+        for (const auto& it : m_index_by_height) {
+            for (const auto& outpoint : it.second) {
+                if (cacheCoins.find(outpoint) == cacheCoins.end()) {
+                    bad_outpoint_found = true;
+                    msg("Outpoint found in height index without corresponding cacheCoins entry: %s",
+                        outpoint.ToString());
+                }
+            }
+        }
     }
 
     CCoinsMap& map() const { return cacheCoins; }
@@ -121,6 +188,7 @@ BOOST_AUTO_TEST_CASE(coins_cache_simulation_test)
     bool found_an_entry = false;
     bool missed_an_entry = false;
     bool uncached_an_entry = false;
+    bool partial_flushed = false;
 
     // A simple map to track what we expect the cache stack to represent.
     std::map<COutPoint, Coin> result;
@@ -137,9 +205,17 @@ BOOST_AUTO_TEST_CASE(coins_cache_simulation_test)
         txids[i] = InsecureRand256();
     }
 
+    auto height_to_blockhash = [](int height) { return InsecureRand256(); };
+
     for (unsigned int i = 0; i < NUM_SIMULATION_ITERATIONS; i++) {
         // Do a random modification.
         {
+
+            int stacknum = 0;
+            for (auto& view : stack) {
+                msg("checking stack %d", stacknum++);
+                view->CheckHeightIndex();
+            }
             uint256 txid = txids[InsecureRandRange(txids.size())]; // txid we're going to modify in this iteration.
             Coin& coin = result[COutPoint(txid, 0)];
 
@@ -151,7 +227,12 @@ BOOST_AUTO_TEST_CASE(coins_cache_simulation_test)
 
             bool result_havecoin = test_havecoin_before ? stack.back()->HaveCoin(COutPoint(txid, 0)) : false;
             const Coin& entry = (InsecureRandRange(500) == 0) ? AccessByTxid(*stack.back(), txid) : stack.back()->AccessCoin(COutPoint(txid, 0));
-            BOOST_CHECK(coin == entry);
+            BOOST_CHECK_MESSAGE(coin == entry,
+                strprintf("\n%s\n%s\n%s\n", txid, coin.ToString(), entry.ToString()));
+
+            if (!(coin == entry)) {
+                _Exit(0);
+            }
             BOOST_CHECK(!test_havecoin_before || result_havecoin == !entry.IsSpent());
 
             if (test_havecoin_after) {
@@ -162,7 +243,7 @@ BOOST_AUTO_TEST_CASE(coins_cache_simulation_test)
             if (InsecureRandRange(5) == 0 || coin.IsSpent()) {
                 Coin newcoin;
                 newcoin.out.nValue = InsecureRand32();
-                newcoin.nHeight = 1;
+                newcoin.nHeight = InsecureRandRange(256) + 1;
                 if (InsecureRandRange(16) == 0 && coin.IsSpent()) {
                     newcoin.out.scriptPubKey.assign(1 + InsecureRandBits(6), OP_RETURN);
                     BOOST_CHECK(newcoin.out.scriptPubKey.IsUnspendable());
@@ -172,9 +253,11 @@ BOOST_AUTO_TEST_CASE(coins_cache_simulation_test)
                     (coin.IsSpent() ? added_an_entry : updated_an_entry) = true;
                     coin = newcoin;
                 }
+                msg("[%d] [%s] adding coin %s", stack.size() - 1, txid, newcoin.ToString());
                 stack.back()->AddCoin(COutPoint(txid, 0), std::move(newcoin), !coin.IsSpent() || InsecureRand32() & 1);
             } else {
                 removed_an_entry = true;
+                msg("[%d] [%s] spending coin %s", stack.size() - 1, txid, coin.ToString());
                 coin.Clear();
                 BOOST_CHECK(stack.back()->SpendCoin(COutPoint(txid, 0)));
             }
@@ -184,17 +267,25 @@ BOOST_AUTO_TEST_CASE(coins_cache_simulation_test)
         if (InsecureRandRange(10) == 0) {
             COutPoint out(txids[InsecureRand32() % txids.size()], 0);
             int cacheid = InsecureRand32() % stack.size();
+            msg("[%d] [%s] uncaching coin", cacheid, out.hash);
             stack[cacheid]->Uncache(out);
             uncached_an_entry |= !stack[cacheid]->HaveCoinInCache(out);
         }
 
         // Once every 1000 iterations and at the end, verify the full cache.
         if (InsecureRandRange(1000) == 1 || i == NUM_SIMULATION_ITERATIONS - 1) {
+            msg("[%d] VERIFYING", stack.size() - 1);
             for (const auto& entry : result) {
                 bool have = stack.back()->HaveCoin(entry.first);
                 const Coin& coin = stack.back()->AccessCoin(entry.first);
                 BOOST_CHECK(have == !coin.IsSpent());
-                BOOST_CHECK(coin == entry.second);
+                BOOST_CHECK_MESSAGE(coin == entry.second,
+                    strprintf("\n%s\n%s\n", coin.ToString(), entry.second.ToString()));
+
+                if (!(coin == entry.second)) {
+                    assert(0);
+                }
+
                 if (coin.IsSpent()) {
                     missed_an_entry = true;
                 } else {
@@ -211,13 +302,20 @@ BOOST_AUTO_TEST_CASE(coins_cache_simulation_test)
             // Every 100 iterations, flush an intermediate cache
             if (stack.size() > 1 && InsecureRandBool() == 0) {
                 unsigned int flushIndex = InsecureRandRange(stack.size() - 1);
-                BOOST_CHECK(stack[flushIndex]->Flush());
+                if (InsecureRandBool()) {
+                    msg("[%d] flushing", flushIndex);
+                    BOOST_CHECK(stack[flushIndex]->Flush());
+                } else {
+                    msg("[%d] PARTIAL flushing", flushIndex);
+                    BOOST_CHECK(stack[flushIndex]->PartialFlush(height_to_blockhash));
+                }
             }
         }
         if (InsecureRandRange(100) == 0) {
             // Every 100 iterations, change the cache stack.
             if (stack.size() > 0 && InsecureRandBool() == 0) {
                 //Remove the top cache
+                msg("[%d] flushing", stack.size() - 1);
                 BOOST_CHECK(stack.back()->Flush());
                 delete stack.back();
                 stack.pop_back();

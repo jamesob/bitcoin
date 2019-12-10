@@ -36,7 +36,7 @@ SaltedOutpointHasher::SaltedOutpointHasher() : k0(GetRand(std::numeric_limits<ui
 CCoinsViewCache::CCoinsViewCache(CCoinsView *baseIn) : CCoinsViewBacked(baseIn), cachedCoinsUsage(0) {}
 
 size_t CCoinsViewCache::DynamicMemoryUsage() const {
-    return memusage::DynamicUsage(cacheCoins) + cachedCoinsUsage;
+    return memusage::DynamicUsage(cacheCoins) + cachedCoinsUsage + memusage::DynamicUsage(m_index_by_height);
 }
 
 CCoinsMap::iterator CCoinsViewCache::FetchCoin(const COutPoint &outpoint) const {
@@ -52,6 +52,7 @@ CCoinsMap::iterator CCoinsViewCache::FetchCoin(const COutPoint &outpoint) const 
         // version as fresh.
         ret->second.flags = CCoinsCacheEntry::FRESH;
     }
+    this->AddToHeightIndex(ret->first, ret->second.coin.nHeight);
     cachedCoinsUsage += ret->second.coin.DynamicMemoryUsage();
     return ret;
 }
@@ -74,6 +75,7 @@ void CCoinsViewCache::AddCoin(const COutPoint &outpoint, Coin&& coin, bool possi
     bool fresh = false;
     if (!inserted) {
         cachedCoinsUsage -= it->second.coin.DynamicMemoryUsage();
+        this->RemoveFromHeightIndex(it);
     }
     if (!possible_overwrite) {
         if (!it->second.coin.IsSpent()) {
@@ -84,6 +86,7 @@ void CCoinsViewCache::AddCoin(const COutPoint &outpoint, Coin&& coin, bool possi
     it->second.coin = std::move(coin);
     it->second.flags |= CCoinsCacheEntry::DIRTY | (fresh ? CCoinsCacheEntry::FRESH : 0);
     cachedCoinsUsage += it->second.coin.DynamicMemoryUsage();
+    this->AddToHeightIndex(it->first, it->second.coin.nHeight);
 }
 
 void AddCoins(CCoinsViewCache& cache, const CTransaction &tx, int nHeight, bool check) {
@@ -101,10 +104,15 @@ bool CCoinsViewCache::SpendCoin(const COutPoint &outpoint, Coin* moveout) {
     CCoinsMap::iterator it = FetchCoin(outpoint);
     if (it == cacheCoins.end()) return false;
     cachedCoinsUsage -= it->second.coin.DynamicMemoryUsage();
+    bool is_fresh = it->second.flags & CCoinsCacheEntry::FRESH;
+    if (is_fresh) {
+        // Must be done before the coin moves below so that we use the right height for removal.
+        this->RemoveFromHeightIndex(it);
+    }
     if (moveout) {
         *moveout = std::move(it->second.coin);
     }
-    if (it->second.flags & CCoinsCacheEntry::FRESH) {
+    if (is_fresh) {
         cacheCoins.erase(it);
     } else {
         it->second.flags |= CCoinsCacheEntry::DIRTY;
@@ -144,6 +152,26 @@ void CCoinsViewCache::SetBestBlock(const uint256 &hashBlockIn) {
     hashBlock = hashBlockIn;
 }
 
+void CCoinsViewCache::RemoveFromHeightIndex(const CCoinsMap::iterator& cache_it)
+{
+    if (!cache_it->second.coin.IsSpent()) {
+        // Coin gives us a height for direct lookup.
+        std::vector<COutPoint>& vec = m_index_by_height[cache_it->second.coin.nHeight];
+        vec.erase(std::remove(vec.begin(), vec.end(), cache_it->first), vec.end());
+    } else {
+        // Coin is spent and we have no height, so we have to search the whole index.
+        for (auto ind_it = m_index_by_height.begin(); ind_it != m_index_by_height.end(); ++ind_it) {
+            auto& vec = ind_it->second;
+            vec.erase(std::remove(vec.begin(), vec.end(), cache_it->first), vec.end());
+        }
+    }
+}
+
+void CCoinsViewCache::AddToHeightIndex(COutPoint key, int height) const
+{
+    m_index_by_height[height].push_back(key);
+}
+
 bool CCoinsViewCache::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlockIn) {
     for (CCoinsMap::iterator it = mapCoins.begin(); it != mapCoins.end(); it = mapCoins.erase(it)) {
         // Ignore non-dirty entries (optimization).
@@ -161,6 +189,9 @@ bool CCoinsViewCache::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlockIn
                 entry.coin = std::move(it->second.coin);
                 cachedCoinsUsage += entry.coin.DynamicMemoryUsage();
                 entry.flags = CCoinsCacheEntry::DIRTY;
+
+                this->AddToHeightIndex(it->first, entry.coin.nHeight);
+
                 // We can mark it FRESH in the parent if it was FRESH in the child
                 // Otherwise it might have just been flushed from the parent's cache
                 // and already exist in the grandparent
@@ -177,6 +208,9 @@ bool CCoinsViewCache::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlockIn
                 throw std::logic_error("FRESH flag misapplied to cache entry for base transaction with spendable outputs");
             }
 
+            // Reindex the coin in case height has changed.
+            this->RemoveFromHeightIndex(itUs);
+
             // Found the entry in the parent cache
             if ((itUs->second.flags & CCoinsCacheEntry::FRESH) && it->second.coin.IsSpent()) {
                 // The grandparent does not have an entry, and the child is
@@ -185,6 +219,7 @@ bool CCoinsViewCache::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlockIn
                 cachedCoinsUsage -= itUs->second.coin.DynamicMemoryUsage();
                 cacheCoins.erase(itUs);
             } else {
+
                 // A normal modification.
                 cachedCoinsUsage -= itUs->second.coin.DynamicMemoryUsage();
                 itUs->second.coin = std::move(it->second.coin);
@@ -195,6 +230,8 @@ bool CCoinsViewCache::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlockIn
                 // we must not copy that FRESH flag to the parent as that
                 // pruned state likely still needs to be communicated to the
                 // grandparent.
+
+                this->AddToHeightIndex(itUs->first, itUs->second.coin.nHeight);
             }
         }
     }
@@ -205,8 +242,40 @@ bool CCoinsViewCache::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlockIn
 bool CCoinsViewCache::Flush() {
     bool fOk = base->BatchWrite(cacheCoins, hashBlock);
     cacheCoins.clear();
+    m_index_by_height.clear();
     cachedCoinsUsage = 0;
     return fOk;
+}
+
+bool CCoinsViewCache::PartialFlush(
+    std::function<uint256(int)> blockheight_to_hash_fnc,
+    double percentage)
+{
+    CCoinsMap temp;
+    int num_keys_to_flush = m_index_by_height.size() * percentage;
+    unsigned int latest_height_written{0};
+    // Iterator starts at earliest block height in map.
+    IndexByHeightMap::iterator it = m_index_by_height.begin();
+
+    while (num_keys_to_flush > 0) {
+        num_keys_to_flush--;
+
+        for (COutPoint& key : it->second) {
+            auto cit = cacheCoins.find(key);
+            if (cit == cacheCoins.end()) {
+                throw std::logic_error(strprintf(
+                    "Bad entry in the coins cache by-height index - %s not found", key.ToString()));
+            }
+            auto it = temp.emplace(std::move(key), std::move(cit->second)).first;
+            cacheCoins.erase(cit);
+            cachedCoinsUsage -= it->second.coin.DynamicMemoryUsage();
+        }
+
+        latest_height_written = it->first;
+        it = m_index_by_height.erase(it);
+    }
+
+    return base->BatchWrite(temp, blockheight_to_hash_fnc(latest_height_written));
 }
 
 void CCoinsViewCache::Uncache(const COutPoint& hash)
@@ -214,6 +283,7 @@ void CCoinsViewCache::Uncache(const COutPoint& hash)
     CCoinsMap::iterator it = cacheCoins.find(hash);
     if (it != cacheCoins.end() && it->second.flags == 0) {
         cachedCoinsUsage -= it->second.coin.DynamicMemoryUsage();
+        this->RemoveFromHeightIndex(it);
         cacheCoins.erase(it);
     }
 }

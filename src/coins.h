@@ -13,6 +13,7 @@
 #include <memusage.h>
 #include <serialize.h>
 #include <uint256.h>
+#include <tinyformat.h>
 
 #include <assert.h>
 #include <stdint.h>
@@ -79,6 +80,10 @@ public:
 
     size_t DynamicMemoryUsage() const {
         return memusage::DynamicUsage(out.scriptPubKey);
+    }
+
+    std::string ToString() const {
+        return strprintf("Coin(coinbase=%f, height=%d, out=%s)", fCoinBase, nHeight, out.ToString());
     }
 };
 
@@ -220,6 +225,18 @@ protected:
     /* Cached dynamic memory usage for the inner Coin objects. */
     mutable size_t cachedCoinsUsage;
 
+    using IndexByHeightMap = std::map<int, std::vector<COutPoint>>;
+
+    //! Optional index by height to a vector of pointers into cacheCoins.
+    //! Used to facilitate partial flushes.
+    //! Marked mutable for modification in FetchCoin.
+    //!
+    //! TODO: investigate calling .reserve() on COutPoint vectors based on average
+    //! number of coins in block for fewer allocations at the expense of rarely
+    //! over-allocating.
+    //!
+    mutable IndexByHeightMap m_index_by_height;
+
 public:
     CCoinsViewCache(CCoinsView *baseIn);
 
@@ -277,6 +294,8 @@ public:
      */
     bool Flush();
 
+    bool PartialFlush(std::function<uint256(int)> blockheight_to_hash_fnc, double percentage = 0.2);
+
     /**
      * Removes the UTXO with the given outpoint from the cache, if it is
      * not modified.
@@ -308,6 +327,10 @@ private:
      * memory usage.
      */
     CCoinsMap::iterator FetchCoin(const COutPoint &outpoint) const;
+
+    void RemoveFromHeightIndex(const CCoinsMap::iterator& it);
+
+    void AddToHeightIndex(COutPoint key, int height) const;
 };
 
 //! Utility function to add all of a transaction's outputs to a cache.

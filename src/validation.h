@@ -426,6 +426,7 @@ struct CBlockIndexWorkComparator
     bool operator()(const CBlockIndex *pa, const CBlockIndex *pb) const;
 };
 
+
 /**
  * Maintains a tree of blocks (stored in `m_block_index`) which is consulted
  * to determine where the most-work tip is.
@@ -793,5 +794,7 @@ inline bool IsBlockPruned(const CBlockIndex* pblockindex)
 {
     return (fHavePruned && !(pblockindex->nStatus & BLOCK_HAVE_DATA) && pblockindex->nTx > 0);
 }
+
+uint256 BlockHeightToHash(int height);
 
 #endif // BITCOIN_VALIDATION_H
