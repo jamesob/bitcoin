@@ -75,7 +75,7 @@ void CCoinsViewCache::AddCoin(const COutPoint &outpoint, Coin&& coin, bool possi
     bool fresh = false;
     if (!inserted) {
         cachedCoinsUsage -= it->second.coin.DynamicMemoryUsage();
-        this->RemoveFromHeightIndex(it);
+        // this->RemoveFromHeightIndex(it);
     }
     if (!possible_overwrite) {
         if (!it->second.coin.IsSpent()) {
@@ -107,7 +107,7 @@ bool CCoinsViewCache::SpendCoin(const COutPoint &outpoint, Coin* moveout) {
     bool is_fresh = it->second.flags & CCoinsCacheEntry::FRESH;
     if (is_fresh) {
         // Must be done before the coin moves below so that we use the right height for removal.
-        this->RemoveFromHeightIndex(it);
+        // this->RemoveFromHeightIndex(it);
     }
     if (moveout) {
         *moveout = std::move(it->second.coin);
@@ -209,7 +209,7 @@ bool CCoinsViewCache::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlockIn
             }
 
             // Reindex the coin in case height has changed.
-            this->RemoveFromHeightIndex(itUs);
+            // this->RemoveFromHeightIndex(itUs);
 
             // Found the entry in the parent cache
             if ((itUs->second.flags & CCoinsCacheEntry::FRESH) && it->second.coin.IsSpent()) {
@@ -263,8 +263,9 @@ bool CCoinsViewCache::PartialFlush(
         for (COutPoint& key : it->second) {
             auto cit = cacheCoins.find(key);
             if (cit == cacheCoins.end()) {
-                throw std::logic_error(strprintf(
-                    "Bad entry in the coins cache by-height index - %s not found", key.ToString()));
+                /* throw std::logic_error(strprintf( */
+                /*     "Bad entry in the coins cache by-height index - %s not found", key.ToString())); */
+                continue;
             }
             auto it = temp.emplace(std::move(key), std::move(cit->second)).first;
             cacheCoins.erase(cit);
@@ -283,7 +284,7 @@ void CCoinsViewCache::Uncache(const COutPoint& hash)
     CCoinsMap::iterator it = cacheCoins.find(hash);
     if (it != cacheCoins.end() && it->second.flags == 0) {
         cachedCoinsUsage -= it->second.coin.DynamicMemoryUsage();
-        this->RemoveFromHeightIndex(it);
+        // this->RemoveFromHeightIndex(it);
         cacheCoins.erase(it);
     }
 }

@@ -211,11 +211,11 @@ BOOST_AUTO_TEST_CASE(coins_cache_simulation_test)
         // Do a random modification.
         {
 
-            int stacknum = 0;
-            for (auto& view : stack) {
-                msg("checking stack %d", stacknum++);
-                view->CheckHeightIndex();
-            }
+            /* int stacknum = 0; */
+            /* for (auto& view : stack) { */
+            /*     msg("checking stack %d", stacknum++); */
+            /*     view->CheckHeightIndex(); */
+            /* } */
             uint256 txid = txids[InsecureRandRange(txids.size())]; // txid we're going to modify in this iteration.
             Coin& coin = result[COutPoint(txid, 0)];
 
