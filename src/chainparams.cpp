@@ -162,7 +162,10 @@ public:
         };
 
         m_assumeutxo_data = MapAssumeutxo{
-         // TODO to be specified in a future patch.
+            {
+                685000,
+                {AssumeutxoHash{uint256S("0xa85dd26a5ca449d76bc7cb6103960a2894475f11acef57efb77d833ca84d0ed3")}, 644907744},
+            },
         };
 
         chainTxData = ChainTxData{
