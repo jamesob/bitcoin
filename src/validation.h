@@ -459,14 +459,11 @@ public:
      * Load the blocktree off disk and into memory. Populate certain metadata
      * per index entry (nStatus, nChainWork, nTimeMax, etc.) as well as peripheral
      * collections like setDirtyBlockIndex.
-     *
-     * @param[out] block_index_candidates  Fill this set with any valid blocks for
-     *                                     which we've downloaded all transactions.
      */
     bool LoadBlockIndex(
         const Consensus::Params& consensus_params,
         CBlockTreeDB& blocktree,
-        std::set<CBlockIndex*, CBlockIndexWorkComparator>& block_index_candidates)
+        ChainstateManager& chainman)
         EXCLUSIVE_LOCKS_REQUIRED(cs_main);
 
     /** Clear all data members. */
@@ -659,6 +656,9 @@ public:
      * std::nullopt if this chainstate was not created from a snapshot.
      */
     const std::optional<uint256> m_from_snapshot_blockhash;
+
+    //! Return true if this chainstate was created from a UTXO snapshot.
+    bool IsFromSnapshot() { return m_from_snapshot_blockhash.has_value(); }
 
     /**
      * The set of all CBlockIndex entries with BLOCK_VALID_TRANSACTIONS (for itself and all ancestors) and

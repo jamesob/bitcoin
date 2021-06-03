@@ -3807,7 +3807,7 @@ CBlockIndex * BlockManager::InsertBlockIndex(const uint256& hash)
 bool BlockManager::LoadBlockIndex(
     const Consensus::Params& consensus_params,
     CBlockTreeDB& blocktree,
-    std::set<CBlockIndex*, CBlockIndexWorkComparator>& block_index_candidates)
+    ChainstateManager& chainman)
 {
     if (!blocktree.LoadBlockIndexGuts(consensus_params, [this](const uint256& hash) EXCLUSIVE_LOCKS_REQUIRED(cs_main) { return this->InsertBlockIndex(hash); }))
         return false;
@@ -3821,17 +3821,53 @@ bool BlockManager::LoadBlockIndex(
         vSortedByHeight.push_back(std::make_pair(pindex->nHeight, pindex));
     }
     sort(vSortedByHeight.begin(), vSortedByHeight.end());
+
+    const bool using_unvalidated_snapshot =
+        chainman.IsSnapshotActive() && !chainman.IsSnapshotValidated();
+
+    auto snapshot_blockhash_opt = chainman.SnapshotBlockhash();
+    // When using an unvalidated assumeutxo snapshot, mark the point at which we
+    // start processing blockindex entries that are assumed to be valid.
+    bool pindex_assumed_valid = false;
+
+    std::optional<int> snapshot_height = chainman.GetSnapshotHeight();
+
     for (const std::pair<int, CBlockIndex*>& item : vSortedByHeight)
     {
         if (ShutdownRequested()) return false;
         CBlockIndex* pindex = item.second;
         pindex->nChainWork = (pindex->pprev ? pindex->pprev->nChainWork : 0) + GetBlockProof(*pindex);
         pindex->nTimeMax = (pindex->pprev ? std::max(pindex->pprev->nTimeMax, pindex->nTime) : pindex->nTime);
+
         // We can link the chain of blocks for which we've received transactions at some point.
         // Pruned nodes may have deleted the block.
-        if (pindex->nTx > 0) {
+        //
+        // When operating using a UTXO snapshot, do not expect assumed-valid blocks to
+        // have nTx.
+        if (pindex->nTx > 0 || (snapshot_height && *snapshot_height >= pindex->nHeight)) {
             if (pindex->pprev) {
-                if (pindex->pprev->HaveTxsDownloaded()) {
+                bool is_snapshot_base =
+                    snapshot_blockhash_opt && pindex->GetBlockHash() == *snapshot_blockhash_opt;
+
+                if (using_unvalidated_snapshot && is_snapshot_base) {
+                    // While starting up with an assumeutxo snapshot chain,
+                    // we need to manually populate the nChainTx field of the
+                    // base of the snapshot so that we can add assumed-valid
+                    // candidate tips to setBlockIndexCandidates below.
+                    //
+                    // After the snapshot has completed validation, nChainTx
+                    // values should compute normally.
+                    auto nchaintx_opt = chainman.GetSnapshotNChainTx();
+                    if (!nchaintx_opt) {
+                        LogPrintf("[snapshot] unable to find nChainTx for snapshot state\n");
+                        return false;
+                    }
+                    pindex->nChainTx = *nchaintx_opt;
+                    pindex_assumed_valid = true;
+
+                    LogPrintf("\n\n[snapshot] setting %s nChainTx to %d\n\n",
+                        pindex->ToString(), pindex->nChainTx);
+                } else if (pindex->pprev->HaveTxsDownloaded()) {
                     pindex->nChainTx = pindex->pprev->nChainTx + pindex->nTx;
                 } else {
                     pindex->nChainTx = 0;
@@ -3845,8 +3881,19 @@ bool BlockManager::LoadBlockIndex(
             pindex->nStatus |= BLOCK_FAILED_CHILD;
             setDirtyBlockIndex.insert(pindex);
         }
-        if (pindex->IsValid(BLOCK_VALID_TRANSACTIONS) && (pindex->HaveTxsDownloaded() || pindex->pprev == nullptr)) {
-            block_index_candidates.insert(pindex);
+        if (pindex->IsValid(BLOCK_VALID_TRANSACTIONS) &&
+                (pindex->HaveTxsDownloaded() || pindex->pprev == nullptr)) {
+            // This is kind of ugly since we're reaching up into the owning object (chainman),
+            // but it's inconvenient to move this out of the function, since we rely on
+            // `pindex_assumed_valid` as computed above.
+            for (CChainState* chainstate : chainman.GetAll()) {
+                // If we're on an assumed-valid block index entry, avoid
+                // adding this as a candidate tip to the background validation
+                // chain, since that would prevent background IBD from happening.
+                if (!pindex_assumed_valid || chainstate->IsFromSnapshot()) {
+                    chainstate->setBlockIndexCandidates.insert(pindex);
+                }
+            }
         }
         if (pindex->nStatus & BLOCK_FAILED_MASK && (!pindexBestInvalid || pindex->nChainWork > pindexBestInvalid->nChainWork))
             pindexBestInvalid = pindex;
@@ -3872,9 +3919,7 @@ void BlockManager::Unload() {
 
 bool CChainState::LoadBlockIndexDB()
 {
-    if (!m_blockman.LoadBlockIndex(
-            m_params.GetConsensus(), *pblocktree,
-            setBlockIndexCandidates)) {
+    if (!m_blockman.LoadBlockIndex(m_params.GetConsensus(), *pblocktree, m_chainman)) {
         return false;
     }
 
