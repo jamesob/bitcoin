@@ -1431,7 +1431,7 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
                 bool failed_chainstate_init = false;
 
                 for (CChainState* chainstate : chainman.GetAll()) {
-                    LogPrintf("Initializing chainstate %s\n", chainstate->ToString());
+                    LogPrintf("Initializing %s\n", chainstate->ToString());
 
                     chainstate->CoinsErrorCatcher().AddReadErrCallback([]() {
                         uiInterface.ThreadSafeMessageBox(
