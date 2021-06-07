@@ -771,7 +771,7 @@ public:
     bool ReplayBlocks();
 
     /** Whether the chain state needs to be redownloaded due to lack of witness data */
-    [[nodiscard]] bool NeedsRedownload() const EXCLUSIVE_LOCKS_REQUIRED(cs_main);
+    [[nodiscard]] bool NeedsRedownload(std::optional<int> snapshot_height) const EXCLUSIVE_LOCKS_REQUIRED(cs_main);
     /** Ensures we have a genesis block in the block tree, possibly writing one to disk. */
     bool LoadGenesisBlock();
 
