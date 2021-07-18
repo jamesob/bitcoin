@@ -5165,6 +5165,9 @@ bool ChainstateManager::PopulateAndValidateSnapshot(
         if (index->pprev && DeploymentActiveAt(*index, ::Params().GetConsensus(), Consensus::DEPLOYMENT_SEGWIT)) {
             index->nStatus |= BLOCK_OPT_WITNESS;
         }
+
+        // Mark for write to disk.
+        setDirtyBlockIndex.insert(index);
     }
 
     assert(index);
