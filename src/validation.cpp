@@ -5434,15 +5434,27 @@ bool ChainstateManager::DetectSnapshotChainstate(CTxMemPool& mempool)
 void ChainstateManager::ValidatedSnapshotShutdownCleanup(
     fs::path new_chainstate, fs::path old_chainstate)
 {
-    // Both paths should exist.
     assert(fs::exists(new_chainstate));
     assert(fs::exists(old_chainstate));
-    LogPrintf("[snapshot] deleting background chainstate directory (now unnecessary) (%s)\n", old_chainstate);
-    assert(fs::remove_all(old_chainstate) > 0);
+
+    LogPrintf("[snapshot] deleting background chainstate directory (now unnecessary) (%s)\n",
+        old_chainstate);
+
+    // Instead of deleting the background chainstate directly, rename the old
+    // chainstate to chainstate_bak, rename the new chainstate into place, and then
+    // delete to avoid likelihood of corruption from mid-delete shutdown.
+    fs::path tmp_old{old_chainstate};
+    tmp_old += "_bak";
+
+    fs::rename(old_chainstate, tmp_old);
+    fs::rename(new_chainstate, old_chainstate);
+
     LogPrintf("[snapshot] moving snapshot chainstate (%s) to " /* Continued */
         "default chainstate directory (%s)\n",
         new_chainstate, old_chainstate);
-    fs::rename(new_chainstate, old_chainstate);
+
+    assert(fs::remove_all(tmp_old) > 0);
+    LogPrintf("[snapshot] deleted background chainstate directory (%s)\n", old_chainstate);
 }
 
 void ChainstateManager::CheckForUncleanShutdown()
