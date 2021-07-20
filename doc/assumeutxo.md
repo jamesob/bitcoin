@@ -14,6 +14,10 @@ used, as managed by `ChainstateManager`. At various points there can be multiple
 `CChainState` objects in existence to facilitate both maintaining the network tip and
 performing historical validation of the assumed-valid chain.
 
+It is worth noting that though there are multiple separate chainstates, those
+chainstates share use of a common block index (i.e. they hold the same `BlockManager`
+reference).
+
 The subheadings below outline the phases and the corresponding changes to chainstate
 data.
 
