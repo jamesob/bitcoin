@@ -36,6 +36,12 @@ Release Process
   - Testnet should be set some tens of thousands back from the tip due to reorgs there.
   - This update should be reviewed with a reindex-chainstate with assumevalid=0 to catch any defect
      that causes rejection of blocks in the past history.
+* Update `src/chainparams.cpp` with a new `m_assumeutxo_data` entry including the
+  assumeutxo hash and nChainTx count. 
+  - You can obtain this information, and the corresponding snapshot, by running
+    `./contrib/devtools/utxo_snapshot.sh <blockheight> <snapshot-out-path>`.
+  - The height used should probably the be same as the assumevalid height chosen.
+  - Ensure the resulting snapshot is uploaded somewhere publicly accessible (torrent, HTTP server, etc.).
 - Clear the release notes and move them to the wiki (see "Write the release notes" below).
 - Translations on Transifex
     - Create [a new resource](https://www.transifex.com/bitcoin/bitcoin/content/) named after the major version with the slug `[bitcoin.qt-translation-<RRR>x]`, where `RRR` is the major branch number padded with zeros. Use `src/qt/locale/bitcoin_en.xlf` to create it.
