@@ -6,6 +6,7 @@ include(GenerateHeaders)
 generate_header_from_json(data/base58_encode_decode.json)
 generate_header_from_json(data/bip341_wallet_vectors.json)
 generate_header_from_json(data/blockfilters.json)
+generate_header_from_json(data/ctvhash.json)
 generate_header_from_json(data/key_io_invalid.json)
 generate_header_from_json(data/key_io_valid.json)
 generate_header_from_json(data/script_tests.json)
@@ -23,6 +24,7 @@ add_executable(test_bitcoin
   ${CMAKE_CURRENT_BINARY_DIR}/data/base58_encode_decode.json.h
   ${CMAKE_CURRENT_BINARY_DIR}/data/bip341_wallet_vectors.json.h
   ${CMAKE_CURRENT_BINARY_DIR}/data/blockfilters.json.h
+  ${CMAKE_CURRENT_BINARY_DIR}/data/ctvhash.json.h
   ${CMAKE_CURRENT_BINARY_DIR}/data/key_io_invalid.json.h
   ${CMAKE_CURRENT_BINARY_DIR}/data/key_io_valid.json.h
   ${CMAKE_CURRENT_BINARY_DIR}/data/script_tests.json.h
@@ -57,6 +59,7 @@ add_executable(test_bitcoin
   compilerbug_tests.cpp
   compress_tests.cpp
   crypto_tests.cpp
+  ctvhash_tests.cpp
   cuckoocache_tests.cpp
   dbwrapper_tests.cpp
   denialofservice_tests.cpp
