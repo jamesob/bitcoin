@@ -1823,7 +1823,8 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex* pindex, const Consens
         *pindex->phashBlock != consensusparams.BIP16Exception) // this block isn't the historical exception
     {
         // Enforce WITNESS rules whenever P2SH is in effect
-        flags |= SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS;
+        // jamesob: enforce CTV rules throughout the chain for benchmarking.
+        flags |= SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_DEFAULT_CHECK_TEMPLATE_VERIFY_HASH;
     }
 
     // Enforce the DERSIG (BIP66) rule
@@ -1849,11 +1850,6 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex* pindex, const Consens
     // Enforce BIP147 NULLDUMMY (activated simultaneously with segwit)
     if (DeploymentActiveAt(*pindex, consensusparams, Consensus::DEPLOYMENT_SEGWIT)) {
         flags |= SCRIPT_VERIFY_NULLDUMMY;
-    }
-
-    // Enforce CheckTemplateVerify (BIP119)
-    if (DeploymentActiveAt(*pindex, consensusparams, Consensus::DEPLOYMENT_CHECKTEMPLATEVERIFY)) {
-        flags |= SCRIPT_VERIFY_DEFAULT_CHECK_TEMPLATE_VERIFY_HASH;
     }
 
     return flags;
