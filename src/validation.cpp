@@ -1935,6 +1935,10 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Co
     // violating blocks.
     uint32_t flags{SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_WITNESS | SCRIPT_VERIFY_TAPROOT};
     const auto it{consensusparams.script_flag_exceptions.find(*Assert(block_index.phashBlock))};
+
+    // jamesob: enforce CTV rules throughout the chain for benchmarking.
+    flags |= SCRIPT_VERIFY_DEFAULT_CHECK_TEMPLATE_VERIFY_HASH;
+
     // can be removed after backports no longer needed
     auto pindex = &block_index;
     if (it != consensusparams.script_flag_exceptions.end()) {
@@ -1959,11 +1963,6 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Co
     // Enforce BIP147 NULLDUMMY (activated simultaneously with segwit)
     if (DeploymentActiveAt(block_index, consensusparams, Consensus::DEPLOYMENT_SEGWIT)) {
         flags |= SCRIPT_VERIFY_NULLDUMMY;
-    }
-
-    // Enforce CheckTemplateVerify (BIP119)
-    if (DeploymentActiveAt(*pindex, consensusparams, Consensus::DEPLOYMENT_CHECKTEMPLATEVERIFY)) {
-        flags |= SCRIPT_VERIFY_DEFAULT_CHECK_TEMPLATE_VERIFY_HASH;
     }
 
     return flags;
