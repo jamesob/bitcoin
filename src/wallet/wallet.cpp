@@ -1971,7 +1971,7 @@ TransactionError CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bool& comp
     if (n_signed) {
         *n_signed = 0;
     }
-    const PrecomputedTransactionData txdata = PrecomputePSBTData(psbtx);
+    PrecomputedTransactionData txdata = PrecomputePSBTData(psbtx);
     LOCK(cs_wallet);
     // Get all of the previous transactions
     for (unsigned int i = 0; i < psbtx.tx->vin.size(); ++i) {
