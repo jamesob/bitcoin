@@ -55,7 +55,9 @@
 #include <warnings.h>
 
 #include <algorithm>
+#include <functional>
 #include <numeric>
+#include <mutex>
 #include <optional>
 #include <string>
 
@@ -1728,7 +1730,11 @@ bool CheckInputScripts(const CTransaction& tx, TxValidationState& state,
             assert(!coin.IsSpent());
             spent_outputs.emplace_back(coin.out);
         }
-        txdata.Init(tx, std::move(spent_outputs));
+        // note: we must use make_shared here since make_unique has a copy
+        // constructor issue, but the shared-ness is not actually used so there is
+        // no performance overhead and minimal memory overhead
+        auto&& f = [flag=std::make_shared<std::once_flag>()](std::function<void()> f) mutable { std::call_once(*flag, f); };
+        txdata.Init(tx, std::move(spent_outputs), /*force=*/ false, f);
     }
     assert(txdata.m_spent_outputs.size() == tx.vin.size());
 
@@ -2167,7 +2173,6 @@ bool CChainState::ConnectBlock(const CBlock& block, BlockValidationState& state,
     // for as long as `control`.
     CCheckQueueControl<CScriptCheck> control(fScriptChecks && g_parallel_script_checks ? &scriptcheckqueue : nullptr);
     std::vector<PrecomputedTransactionData> txsdata(block.vtx.size());
-
     std::vector<int> prevheights;
     CAmount nFees = 0;
     int nInputs = 0;
