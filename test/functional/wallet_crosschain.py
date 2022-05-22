@@ -19,13 +19,13 @@ class WalletCrossChain(BitcoinTestFramework):
     def setup_network(self):
         self.add_nodes(self.num_nodes)
 
-        # Switch node 1 to testnet before starting it.
-        self.nodes[1].chain = 'testnet3'
-        self.nodes[1].extra_args = ['-maxconnections=0'] # disable testnet sync
+        # Switch node 1 to signet before starting it.
+        self.nodes[1].chain = 'signet'
+        self.nodes[1].extra_args = ['-maxconnections=0'] # disable signet sync
         with open(self.nodes[1].bitcoinconf, 'r', encoding='utf8') as conf:
             conf_data = conf.read()
         with open (self.nodes[1].bitcoinconf, 'w', encoding='utf8') as conf:
-            conf.write(conf_data.replace('regtest=', 'testnet=').replace('[regtest]', '[test]'))
+            conf.write(conf_data.replace('regtest=', 'signet=').replace('[regtest]', '[signet]'))
 
         self.start_nodes()
 
