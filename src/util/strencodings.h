@@ -407,7 +407,7 @@ consteval uint8_t ConstevalHexDigit(const char c)
  *   time/runtime barrier.
  */
 inline namespace hex_literals {
-namespace detail {
+namespace _detail {
 
 template <size_t N>
 struct Hex {
@@ -425,18 +425,18 @@ struct Hex {
     }
 };
 
-} // namespace detail
+} // namespace _detail
 
-template <util::detail::Hex str>
+template <util::_detail::Hex str>
 constexpr auto operator""_hex() { return str.bytes; }
 
-template <util::detail::Hex str>
+template <util::_detail::Hex str>
 constexpr auto operator""_hex_u8() { return std::bit_cast<std::array<uint8_t, str.bytes.size()>>(str.bytes); }
 
-template <util::detail::Hex str>
+template <util::_detail::Hex str>
 constexpr auto operator""_hex_v() { return std::vector<std::byte>{str.bytes.begin(), str.bytes.end()}; }
 
-template <util::detail::Hex str>
+template <util::_detail::Hex str>
 inline auto operator""_hex_v_u8() { return std::vector<uint8_t>{UCharCast(str.bytes.data()), UCharCast(str.bytes.data() + str.bytes.size())}; }
 
 } // inline namespace hex_literals
