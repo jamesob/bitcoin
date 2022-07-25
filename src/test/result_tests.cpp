@@ -286,7 +286,7 @@ BOOST_AUTO_TEST_CASE(derived_to_base)
 util::ResultPtr<std::unique_ptr<std::pair<int, int>>> PtrFn(std::optional<std::pair<int, int>> i, bool success)
 {
     if (success) return i ? std::make_unique<std::pair<int, int>>(*i) : nullptr;
-    return util::Error{strprintf(Untranslated("PtrFn(%s) error."), i ? strprintf("%i, %i", i->first, i->second) : "nullopt")};
+    return util::Error{Untranslated(strprintf("PtrFn(%s) error.", i ? strprintf("%i, %i", i->first, i->second) : "nullopt"))};
 }
 
 BOOST_AUTO_TEST_CASE(check_ptr)
