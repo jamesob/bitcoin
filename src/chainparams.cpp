@@ -311,6 +311,7 @@ public:
         std::vector<uint8_t> bin;
         vSeeds.clear();
 
+        bool is_special_ctv_signet = false;
         if (!args.IsArgSet("-signetchallenge")) {
             bin = ParseHex("512103ad5e0edad18cb1f0fc0d28a3d4f1f3e445640337489abb10404f2d1e086be430210359ef5021964fe22d6f8e05b2463c9540ce96883fe3b278760f048f5189f2e6c452ae");
             vSeeds.emplace_back("seed.signet.bitcoin.sprovoost.nl.");
@@ -333,6 +334,9 @@ public:
             const auto signet_challenge = args.GetArgs("-signetchallenge");
             if (signet_challenge.size() != 1) {
                 throw std::runtime_error(strprintf("%s: -signetchallenge cannot be multiple values.", __func__));
+            }
+            if (signet_challenge[0] == "512102946e8ba8eca597194e7ed90377d9bbebc5d17a9609ab3e35e706612ee882759351ae") {
+                is_special_ctv_signet = true;
             }
             bin = ParseHex(signet_challenge[0]);
 
@@ -378,6 +382,15 @@ public:
             .start = 1654041600, // 2022-06-01
             .timeout = 1969660800, // 2032-06-01
         };
+        if (is_special_ctv_signet) {
+            // custom deployment parameters for compat
+            consensus.vDeployments[Consensus::DEPLOYMENT_CHECKTEMPLATEVERIFY] = SetupDeployment{
+                .start = 1608242730, // 2020-12-18 (first block on ctv signet)
+                .timeout = 1969660800, // 2032-06-01
+                .activate = 0x20000000, // default version signals for activation
+                .abandon = 0, // consensus invalid due to BIP34
+            };
+        }
         RenounceDeployments(args, consensus.vDeployments);
 
         // message start is defined as the first 4 bytes of the sha256d of the block script
