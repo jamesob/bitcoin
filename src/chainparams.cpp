@@ -78,6 +78,26 @@ struct SetupDeployment
 };
 }
 
+static void RenounceDeployments(const ArgsManager& args, Consensus::HereticalDeployment (&vDeployments)[Consensus::MAX_VERSION_BITS_DEPLOYMENTS])
+{
+    if (!args.IsArgSet("-renounce")) return;
+    for (const std::string& dep_name : args.GetArgs("-renounce")) {
+        bool found = false;
+        for (int j = 0; j < (int)Consensus::MAX_VERSION_BITS_DEPLOYMENTS; ++j) {
+            if (dep_name == VersionBitsDeploymentInfo[j].name) {
+                vDeployments[j].nStartTime = Consensus::HereticalDeployment::NEVER_ACTIVE;
+                vDeployments[j].nTimeout = Consensus::HereticalDeployment::NO_TIMEOUT;
+                found = true;
+                LogPrintf("Disabling deployment %s\n", dep_name);
+                break;
+            }
+        }
+        if (!found) {
+            throw std::runtime_error(strprintf("Invalid deployment (%s)", dep_name));
+        }
+    }
+}
+
 /**
  * Main network on which people trade goods and services.
  */
@@ -350,6 +370,7 @@ public:
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("00000377ae000000000000000000000000000000000000000000000000000000");
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY] = SetupDeployment{.activate = 0x30000000, .abandon = 0, .never = true};
+        RenounceDeployments(args, consensus.vDeployments);
 
         // message start is defined as the first 4 bytes of the sha256d of the block script
         HashWriter h{};
@@ -425,6 +446,7 @@ public:
         m_assumed_chain_state_size = 0;
 
         UpdateActivationParametersFromArgs(args);
+        RenounceDeployments(args, consensus.vDeployments);
 
         genesis = CreateGenesisBlock(1296688602, 2, 0x207fffff, 1, 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
