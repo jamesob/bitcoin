@@ -6,6 +6,7 @@
 #include <test/data/bip341_wallet_vectors.json.h>
 
 #include <core_io.h>
+#include <deploymentinfo.h>
 #include <fs.h>
 #include <key.h>
 #include <rpc/util.h>
@@ -39,7 +40,6 @@
 static const unsigned int gFlags = SCRIPT_VERIFY_P2SH | SCRIPT_VERIFY_STRICTENC;
 
 unsigned int ParseScriptFlags(std::string strFlags);
-std::string FormatScriptFlags(unsigned int flags);
 
 UniValue read_json(const std::string& jsondata)
 {
@@ -1818,6 +1818,15 @@ BOOST_AUTO_TEST_CASE(bip341_keypath_test_vectors)
 
     }
 
+}
+
+BOOST_AUTO_TEST_CASE(formatscriptflags)
+{
+    // quick check that FormatScriptFlags reports any unknown/unexpected bits
+    BOOST_CHECK_EQUAL(FormatScriptFlags(SCRIPT_VERIFY_P2SH), "P2SH");
+    BOOST_CHECK_EQUAL(FormatScriptFlags(SCRIPT_VERIFY_P2SH | (1u<<31)), "P2SH,0x80000000");
+    BOOST_CHECK_EQUAL(FormatScriptFlags(SCRIPT_VERIFY_TAPROOT | (1u<<27)), "TAPROOT,0x08000000");
+    BOOST_CHECK_EQUAL(FormatScriptFlags(1u<<26), "0x04000000");
 }
 
 BOOST_AUTO_TEST_SUITE_END()

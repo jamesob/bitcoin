@@ -7,6 +7,7 @@
 
 #include <consensus/params.h>
 
+#include <map>
 #include <string>
 
 struct VBDeploymentInfo {
@@ -25,5 +26,9 @@ inline std::string DeploymentName(Consensus::DeploymentPos pos)
     assert(Consensus::ValidDeployment(pos));
     return VersionBitsDeploymentInfo[pos].name;
 }
+
+extern const std::map<std::string, uint32_t> g_verify_flag_names;
+
+std::string FormatScriptFlags(uint32_t flags);
 
 #endif // BITCOIN_DEPLOYMENTINFO_H
