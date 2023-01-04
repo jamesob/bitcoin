@@ -20,7 +20,7 @@ from .util import modinv
 H_POINT = "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0"
 
 
-def TaggedHash(tag, data):
+def TaggedHash(tag: str, data: bytes) -> bytes:
     ss = hashlib.sha256(tag.encode('utf-8')).digest()
     ss += ss
     ss += data
@@ -429,7 +429,7 @@ def compute_xonly_pubkey(key):
     P = SECP256K1.affine(SECP256K1.mul([(SECP256K1_G, x)]))
     return (P[0].to_bytes(32, 'big'), not SECP256K1.has_even_y(P))
 
-def tweak_add_privkey(key, tweak):
+def tweak_add_privkey(key: bytes, tweak: bytes) -> t.Optional[bytes]:
     """Tweak a private key (after negating it if needed)."""
 
     assert len(key) == 32
@@ -499,7 +499,7 @@ def verify_schnorr(key, sig, msg):
         return False
     return True
 
-def sign_schnorr(key, msg, aux=None, flip_p=False, flip_r=False):
+def sign_schnorr(key: bytes, msg: bytes, aux=None, flip_p=False, flip_r=False):
     """Create a Schnorr signature (see BIP 340)."""
 
     if aux is None:

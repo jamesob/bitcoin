@@ -160,6 +160,9 @@ struct PrecomputedTransactionData
     //! Whether the 5 fields above are initialized.
     bool m_bip341_taproot_ready = false;
 
+    //! The total value of all inputs.
+    CAmount m_total_in{0};
+
     // BIP143 precomputed data (double-SHA256).
     uint256 hashPrevouts, hashSequence, hashOutputs;
     //! Whether the 3 fields above are initialized.
@@ -263,6 +266,24 @@ public:
          return false;
     }
 
+    virtual bool CheckVaultSpendToRecoveryOutputs(const uint256& recovery_spk_hash) const
+    {
+         return false;
+    }
+
+    virtual bool CheckUnvaultTriggerOutputs(
+        const uint256& recovery_spk_hash,
+        const CScriptNum& spend_delay,
+        bool require_minimal) const
+    {
+         return false;
+    }
+
+    virtual bool CheckUnvaultTarget(const uint256& target_outputs_hash) const
+    {
+         return false;
+    }
+
     virtual ~BaseSignatureChecker() {}
 };
 
@@ -299,6 +320,12 @@ public:
     bool CheckSchnorrSignature(Span<const unsigned char> sig, Span<const unsigned char> pubkey, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror = nullptr) const override;
     bool CheckLockTime(const CScriptNum& nLockTime) const override;
     bool CheckSequence(const CScriptNum& nSequence) const override;
+    bool CheckVaultSpendToRecoveryOutputs(const uint256& recovery_spk_hash) const override;
+    bool CheckUnvaultTriggerOutputs(
+        const uint256& recovery_spk_hash,
+        const CScriptNum& spend_delay,
+        bool require_minimal) const override;
+    bool CheckUnvaultTarget(const uint256& target_outputs_hash) const override;
 };
 
 using TransactionSignatureChecker = GenericTransactionSignatureChecker<CTransaction>;
@@ -329,6 +356,21 @@ public:
     bool CheckSequence(const CScriptNum& nSequence) const override
     {
         return m_checker.CheckSequence(nSequence);
+    }
+    bool CheckVaultSpendToRecoveryOutputs(const uint256& recovery_spk_hash) const override
+    {
+        return m_checker.CheckVaultSpendToRecoveryOutputs(recovery_spk_hash);
+    }
+    bool CheckUnvaultTriggerOutputs(
+        const uint256& recovery_spk_hash,
+        const CScriptNum& spend_delay,
+        bool require_minimal) const override
+    {
+        return m_checker.CheckUnvaultTriggerOutputs(recovery_spk_hash, spend_delay, require_minimal);
+    }
+    bool CheckUnvaultTarget(const uint256& target_outputs_hash) const override
+    {
+        return m_checker.CheckUnvaultTarget(target_outputs_hash);
     }
 };
 

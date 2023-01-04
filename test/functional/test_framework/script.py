@@ -243,8 +243,8 @@ OP_NOP1 = CScriptOp(0xb0)
 OP_CHECKLOCKTIMEVERIFY = CScriptOp(0xb1)
 OP_CHECKSEQUENCEVERIFY = CScriptOp(0xb2)
 OP_NOP4 = CScriptOp(0xb3)
-OP_NOP5 = CScriptOp(0xb4)
-OP_NOP6 = CScriptOp(0xb5)
+OP_VAULT = CScriptOp(0xb4)
+OP_UNVAULT = CScriptOp(0xb5)
 OP_NOP7 = CScriptOp(0xb6)
 OP_NOP8 = CScriptOp(0xb7)
 OP_NOP9 = CScriptOp(0xb8)
@@ -361,8 +361,8 @@ OPCODE_NAMES.update({
     OP_CHECKLOCKTIMEVERIFY: 'OP_CHECKLOCKTIMEVERIFY',
     OP_CHECKSEQUENCEVERIFY: 'OP_CHECKSEQUENCEVERIFY',
     OP_NOP4: 'OP_NOP4',
-    OP_NOP5: 'OP_NOP5',
-    OP_NOP6: 'OP_NOP6',
+    OP_VAULT: 'OP_VAULT',
+    OP_UNVAULT: 'OP_UNVAULT',
     OP_NOP7: 'OP_NOP7',
     OP_NOP8: 'OP_NOP8',
     OP_NOP9: 'OP_NOP9',
@@ -435,7 +435,7 @@ class CScript(bytes):
     __slots__ = ()
 
     @classmethod
-    def __coerce_instance(cls, other):
+    def __coerce_instance(cls, other) -> bytes:
         # Coerce other into bytes
         if isinstance(other, CScriptOp):
             other = bytes([other])

@@ -403,6 +403,15 @@ static bool EvalChecksig(const valtype& sig, const valtype& pubkey, CScript::con
     assert(false);
 }
 
+const HashWriter HASHER_VAULT_RECOVERY_SPK{TaggedHash("VaultRecoverySPK")};
+const HashWriter HASHER_VAULT_UNVAULT_SPK{TaggedHash("VaultUnvaultSPK")};
+
+static uint256 VaultScriptHash(const HashWriter hw, const CScript& script) {
+    return (HashWriter{hw} << script).GetSHA256();
+}
+
+static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, const std::vector<unsigned char>& program, unsigned int flags, const BaseSignatureChecker& checker, ScriptError* serror, bool is_p2sh);
+
 bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& script, unsigned int flags, const BaseSignatureChecker& checker, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror)
 {
     static const CScriptNum bnZero(0);
@@ -591,8 +600,8 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     break;
                 }
 
-                case OP_NOP1: case OP_NOP4: case OP_NOP5:
-                case OP_NOP6: case OP_NOP7: case OP_NOP8: case OP_NOP9: case OP_NOP10:
+                case OP_NOP1: case OP_NOP4:
+                case OP_NOP7: case OP_NOP8: case OP_NOP9: case OP_NOP10:
                 {
                     if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS)
                         return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_NOPS);
@@ -1213,6 +1222,122 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                 }
                 break;
 
+                case OP_VAULT:
+                {
+                    // only available post-segwit
+                    if (sigversion == SigVersion::BASE) return set_error(serror, SCRIPT_ERR_BAD_OPCODE);
+
+                    // <recovery-spk-hash> <spend-delay> <trigger-spk-hash>
+                    if (stack.size() < 3) return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
+
+                    const uint256 recovery_spk_hash = uint256(stacktop(-3));
+
+                    // `spend-delay` is a CScriptNum, up to 4 bytes, that is interpreted
+                    // in the same way as the first 23 bits of nSequence are per
+                    // BIP 68 (relative time-locks). This enables users of vaults to
+                    // express spend delays in either wall time or block count, and reuse
+                    // the same machinery as OP_CHECKSEQUENCEVERIFY.
+                    const CScriptNum spend_delay(stacktop(-2), fRequireMinimal);
+                    const uint256 expected_trigger_spk_hash = uint256(stacktop(-1));
+                    popstack(stack);
+                    popstack(stack);
+                    popstack(stack);
+
+                    // Case 1: sweep to recovery
+                    if (checker.CheckVaultSpendToRecoveryOutputs(recovery_spk_hash)) {
+                        stack.push_back(vchTrue);
+                        break;
+                    }
+
+                    // Case 2: spend to compatible OP_UNVAULT
+
+                    // [trigger witness stack ...] <trigger-spk> [prev stack items]
+                    if (stack.size() < 2) {
+                        return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
+                    }
+                    if (!checker.CheckUnvaultTriggerOutputs(
+                            recovery_spk_hash, spend_delay, fRequireMinimal)) {
+                        return set_error(serror, SCRIPT_ERR_UNVAULT_MISMATCH);
+                    }
+
+                    // Now check that a valid trigger signature has been put on the witness stack.
+                    const valtype& trigger_witness_program = stacktop(-1);
+                    auto trigger_witness_spk = CScript(
+                        trigger_witness_program.begin(), trigger_witness_program.end());
+
+                    const uint256 trigger_spk_hash = VaultScriptHash(
+                            HASHER_VAULT_UNVAULT_SPK, trigger_witness_spk);
+
+                    if (trigger_spk_hash != expected_trigger_spk_hash) {
+                        return set_error(serror, SCRIPT_ERR_VAULT_WRONG_TRIGGER_WITNESS_PROGRAM);
+                    }
+                    popstack(stack);
+                    // Everything remaining on the stack is the witness stack
+                    // to be fed into the witness program above.
+
+                    CScriptWitness witness;
+                    witness.stack = stack;
+                    int witnessversion;
+                    std::vector<unsigned char> witnessprogram;
+
+                    if (!trigger_witness_spk.IsWitnessProgram(witnessversion, witnessprogram)) {
+                        return set_error(serror, SCRIPT_ERR_VAULT_INVALID_TRIGGER_WITNESS_PROGRAM);
+                    }
+                    // Note that this will recursively call EvalScript. We could get
+                    // into a further recursion if OP_VAULT spends are included in the
+                    // trigger witness program; the recursion depth is limited
+                    // solely by script size constraints.
+                    //
+                    // TODO: think more about whether to limit recursive OP_VAULT
+                    // evaluations in trigger witness programs.
+                    if (!VerifyWitnessProgram(
+                            witness, witnessversion, witnessprogram, flags, checker, serror, /*is_p2sh=*/false)) {
+                        return set_error(serror, SCRIPT_ERR_VAULT_INVALID_TRIGGER_WITNESS);
+                    }
+                }
+                break;
+
+                case OP_UNVAULT:
+                {
+                    // OP_UNVAULT can only be expressed as a bare script, because the
+                    // scriptPubKey must be available in the clear for evaluation by
+                    // the previous opcode, OP_VAULT.
+                    if (sigversion != SigVersion::BASE) {
+                        return set_error(serror, SCRIPT_ERR_BAD_OPCODE);
+                    }
+
+                    // <recovery-spk-hash> <spend-delay> <target-hash>
+                    if (stack.size() < 3) {
+                        return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
+                    }
+
+                    const uint256 recovery_spk_hash = uint256(stacktop(-3));
+                    // See above note in OP_VAULT on `spend_delay` being interpreted
+                    // as lower 23 bits of nSequence.
+                    const CScriptNum spend_delay(stacktop(-2), fRequireMinimal);
+                    const uint256 target_hash = uint256(stacktop(-1));
+
+                    popstack(stack);
+                    popstack(stack);
+                    popstack(stack);
+
+                    // Case 1: sweep to recovery
+                    if (checker.CheckVaultSpendToRecoveryOutputs(recovery_spk_hash)) {
+                        stack.push_back(vchTrue);
+                        break;
+                    }
+                    // Case 2: spend to a compatible target:
+                    //   - satisfies relative timelock, and
+                    //   - txTo outputs match target hash.
+                    if (!checker.CheckSequence(spend_delay)) {
+                        return set_error(serror, SCRIPT_ERR_UNVAULT_LOCKTIME);
+                    }
+                    if (!checker.CheckUnvaultTarget(target_hash)) {
+                        return set_error(serror, SCRIPT_ERR_UNVAULT_TARGET_HASH);
+                    }
+                    stack.push_back(vchTrue);
+                }
+                break;
                 default:
                     return set_error(serror, SCRIPT_ERR_BAD_OPCODE);
             }
@@ -1403,6 +1528,10 @@ void PrecomputedTransactionData::Init(const T& txTo, std::vector<CTxOut>&& spent
     if (!m_spent_outputs.empty()) {
         assert(m_spent_outputs.size() == txTo.vin.size());
         m_spent_outputs_ready = true;
+    }
+
+    for (const auto& outp : m_spent_outputs) {
+        m_total_in += outp.nValue;
     }
 
     // Determine which precomputation-impacting features this transaction uses.
@@ -1780,6 +1909,136 @@ bool GenericTransactionSignatureChecker<T>::CheckSequence(const CScriptNum& nSeq
 
     return true;
 }
+
+template <class T>
+bool GenericTransactionSignatureChecker<T>::CheckVaultSpendToRecoveryOutputs(
+    const uint256& recovery_spk_hash) const
+{
+    if (!this->txdata) return HandleMissingData(m_mdb);
+    const auto& txd{*this->txdata};
+
+    if (!CommonVaultSpendChecks(txd, this->txTo->vout)) {
+        return false;
+    }
+    const CTxOut& value_out = this->txTo->vout[0];
+
+    return (VaultScriptHash(HASHER_VAULT_RECOVERY_SPK, value_out.scriptPubKey) ==
+            recovery_spk_hash);
+}
+
+template <class T>
+bool GenericTransactionSignatureChecker<T>::CheckUnvaultTriggerOutputs(
+    const uint256& recovery_spk_hash,
+    const CScriptNum& spend_delay,
+    bool require_minimal) const
+{
+    if (!this->txdata) return HandleMissingData(m_mdb);
+    const auto& txd{*this->txdata};
+
+    if (!CommonVaultSpendChecks(txd, this->txTo->vout)) {
+        return false;
+    }
+    const CTxOut& value_out = this->txTo->vout[0];
+    const CScript& value_spk = value_out.scriptPubKey;
+
+    auto pc = value_spk.begin();
+    valtype pushdata;
+    opcodetype opcode;
+
+    // Check for 32 bytes of recovery-spk-hash.
+    if (!value_spk.GetOp(pc, opcode, pushdata) || opcode != 0x20) {
+        return false;
+    }
+    uint256 proposed_recovery_spk_hash{pushdata};
+
+    if (proposed_recovery_spk_hash != recovery_spk_hash) {
+        return false;
+    }
+
+    // Check for spend-delay; must be between 1 and 4 bytes.
+    if (!value_spk.GetOp(pc, opcode, pushdata)) {
+        return false;
+    }
+    CScriptNum proposed_spend_delay{0};
+
+    // TODO: this is ugly, but basically we have to replicate EvalScript's parsing
+    // of numbers here. If the number is between [1, 16], it will be OP_[n], but
+    // if it's larger it's encoded as pushdata.
+    if (opcode >= OP_1 && opcode <= OP_16) {
+        proposed_spend_delay = (int)opcode - (int)(OP_1 - 1);
+    } else {
+        if (pushdata.size() < 1 || pushdata.size() > CScriptNum::nDefaultMaxNumSize) {
+            return false;
+        }
+        proposed_spend_delay = CScriptNum(pushdata, require_minimal);
+    }
+
+    if (proposed_spend_delay != spend_delay) {
+        return false;
+    }
+
+    // Check for target-hash; we don't care what it is as long as it's 32 bytes.
+    if (!value_spk.GetOp(pc, opcode) || opcode != 0x20) {
+        return false;
+    }
+
+    // Finally, check that OP_UNVAULT is the last opcode.
+    if (!value_spk.GetOp(pc, opcode) || opcode != OP_UNVAULT || pc != value_spk.end()) {
+        return false;
+    }
+
+    return true;
+}
+
+template <class T>
+bool GenericTransactionSignatureChecker<T>::CheckUnvaultTarget(
+    const uint256& target_outputs_hash) const
+{
+    // We can't use precomputed transaction data here because, since the input lacks a
+    // witness, the precomputation routines don't run. I.e. `txdata.hashOutputs` is blank.
+    return SHA256Uint256(GetOutputsSHA256(*this->txTo)) == target_outputs_hash;
+}
+
+//! Return true if the given output is a 0-value anchor output.
+static bool IsOutputEphemeralAnchor(const CTxOut& out)
+{
+    if (out.nValue != 0) {
+        return false;
+    }
+    const CScript& spk = out.scriptPubKey;
+    if (!(spk.size() == 1 && spk[0] == OP_2)) {
+        return false;
+    }
+    return true;
+}
+
+//! Check that
+//!
+//!   1. The number of outputs is either 1 or 2.
+//!   2. The total value of the vault is preserved.
+//!   3. If there is a second output, it is a 0-value ephemeral anchor output.
+//!
+static bool CommonVaultSpendChecks(
+    const PrecomputedTransactionData& txdata,
+    const std::vector<CTxOut>& vout)
+{
+    const auto num_outs = vout.size();
+    if (num_outs < 1 || num_outs > 2) {
+        return false;
+    }
+
+    const CTxOut& value_out = vout[0];
+    if (value_out.nValue != txdata.m_total_in) {
+        return false;
+    }
+
+    // Ensure the second output, if one exists, is a 0-value ephemeral anchor.
+    if (num_outs == 2 && !IsOutputEphemeralAnchor(vout[1])) {
+        return false;
+    }
+    return true;
+}
+
 
 // explicit instantiation
 template class GenericTransactionSignatureChecker<CTransaction>;
