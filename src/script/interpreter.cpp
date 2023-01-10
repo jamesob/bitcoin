@@ -12,6 +12,8 @@
 #include <script/script.h>
 #include <uint256.h>
 
+#include <algorithm>
+
 typedef std::vector<unsigned char> valtype;
 
 namespace {
@@ -1551,7 +1553,10 @@ void PrecomputedTransactionData::Init(const T& txTo, std::vector<CTxOut>&& spent
     }
 
     for (const auto& outp : m_spent_outputs) {
-        m_total_in += outp.nValue;
+        // XXX the clamp here is to satisfy some bad fuzzer input. If, in practice, we
+        // actually receive an `outp.nValue` that falls outside of this range, we have
+        // bigger problems.
+        m_total_in += std::max(static_cast<CAmount>(0), std::min(outp.nValue, MAX_MONEY));
     }
 
     // Determine which precomputation-impacting features this transaction uses.
