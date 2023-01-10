@@ -1230,7 +1230,11 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     // <recovery-spk-hash> <spend-delay> <trigger-spk-hash>
                     if (stack.size() < 3) return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
 
-                    const uint256 recovery_spk_hash = uint256(stacktop(-3));
+                    valtype& hash_from_stack = stacktop(-3);
+                    if (hash_from_stack.size() != 32) {
+                        return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
+                    }
+                    const uint256 recovery_spk_hash{hash_from_stack};
 
                     // `spend-delay` is a CScriptNum, up to 4 bytes, that is interpreted
                     // in the same way as the first 23 bits of nSequence are per
@@ -1238,7 +1242,13 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     // express spend delays in either wall time or block count, and reuse
                     // the same machinery as OP_CHECKSEQUENCEVERIFY.
                     const CScriptNum spend_delay(stacktop(-2), fRequireMinimal);
-                    const uint256 expected_trigger_spk_hash = uint256(stacktop(-1));
+
+                    hash_from_stack = stacktop(-1);
+                    if (hash_from_stack.size() != 32) {
+                        return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
+                    }
+                    const uint256 expected_trigger_spk_hash{hash_from_stack};
+
                     popstack(stack);
                     popstack(stack);
                     popstack(stack);
@@ -1311,11 +1321,21 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                         return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
                     }
 
-                    const uint256 recovery_spk_hash = uint256(stacktop(-3));
+                    valtype& hash_from_stack = stacktop(-3);
+                    if (hash_from_stack.size() != 32) {
+                        return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
+                    }
+                    const uint256 recovery_spk_hash{hash_from_stack};
+
                     // See above note in OP_VAULT on `spend_delay` being interpreted
                     // as lower 23 bits of nSequence.
                     const CScriptNum spend_delay(stacktop(-2), fRequireMinimal);
-                    const uint256 target_hash = uint256(stacktop(-1));
+
+                    hash_from_stack = stacktop(-1);
+                    if (hash_from_stack.size() != 32) {
+                        return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
+                    }
+                    const uint256 target_hash{hash_from_stack};
 
                     popstack(stack);
                     popstack(stack);
