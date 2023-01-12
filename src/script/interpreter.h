@@ -243,6 +243,7 @@ extern const HashWriter HASHER_TAPBRANCH;  //!< Hasher with tag "TapBranch" pre-
 template <class T>
 uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn, int nHashType, const CAmount& amount, SigVersion sigversion, const PrecomputedTransactionData* cache = nullptr);
 
+
 class BaseSignatureChecker
 {
 public:
@@ -271,10 +272,11 @@ public:
          return false;
     }
 
-    virtual bool CheckUnvaultTriggerOutputs(
+    virtual bool CheckUnvaultTriggerOutputsCommon(
         const uint256& recovery_spk_hash,
         const CScriptNum& spend_delay,
-        bool require_minimal) const
+        bool require_minimal,
+        CScript& unvault_output_spk) const
     {
          return false;
     }
@@ -321,10 +323,11 @@ public:
     bool CheckLockTime(const CScriptNum& nLockTime) const override;
     bool CheckSequence(const CScriptNum& nSequence) const override;
     bool CheckVaultSpendToRecoveryOutputs(const uint256& recovery_spk_hash) const override;
-    bool CheckUnvaultTriggerOutputs(
+    bool CheckUnvaultTriggerOutputsCommon(
         const uint256& recovery_spk_hash,
         const CScriptNum& spend_delay,
-        bool require_minimal) const override;
+        bool require_minimal,
+        CScript& unvault_output_spk) const override;
     bool CheckUnvaultTarget(const uint256& target_outputs_hash) const override;
 };
 
@@ -361,12 +364,14 @@ public:
     {
         return m_checker.CheckVaultSpendToRecoveryOutputs(recovery_spk_hash);
     }
-    bool CheckUnvaultTriggerOutputs(
+    bool CheckUnvaultTriggerOutputsCommon(
         const uint256& recovery_spk_hash,
         const CScriptNum& spend_delay,
-        bool require_minimal) const override
+        bool require_minimal,
+        CScript& unvault_output_spk) const override
     {
-        return m_checker.CheckUnvaultTriggerOutputs(recovery_spk_hash, spend_delay, require_minimal);
+        return m_checker.CheckUnvaultTriggerOutputsCommon(
+            recovery_spk_hash, spend_delay, require_minimal, unvault_output_spk);
     }
     bool CheckUnvaultTarget(const uint256& target_outputs_hash) const override
     {

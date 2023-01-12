@@ -12,11 +12,12 @@ transactional structure of vaults.
 import copy
 import random
 import typing as t
+from enum import Enum
 
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.p2p import P2PInterface
 from test_framework.wallet import MiniWallet, MiniWalletMode
-from test_framework.script import CScript, OP_VAULT, OP_UNVAULT
+from test_framework.script import CScript, OP_VAULT, OP_UNVAULT, OP_0
 from test_framework.messages import CTransaction, COutPoint, CTxOut, CTxIn, COIN
 from test_framework.util import assert_equal, assert_raises_rpc_error
 
@@ -103,6 +104,10 @@ class VaultsTest(BitcoinTestFramework):
 
         target_out_hash = target_outputs_hash(final_target_vout)
         start_unvault_tx = get_trigger_unvault_tx(target_out_hash, [vault])
+        print("JAMES target hash: ", target_out_hash.hex())
+        print("JAMES unvault spk: ", start_unvault_tx.unvault_spk.hex())
+        print("JAMES taproot pubkey: ", start_unvault_tx.taproot_info.scriptPubKey.hex())
+        print("JAMES taproot pubkey?: ", start_unvault_tx.vout[0].scriptPubKey.hex())
 
         bad_unvault_spk = CScript([
             # <recovery-spk-hash>
@@ -145,16 +150,12 @@ class VaultsTest(BitcoinTestFramework):
             self.assert_broadcast_tx(node, sweep_tx, mine_all=True)
             return
 
-        final_unvault = CTransaction()
-        final_unvault.nVersion = 2
-        final_unvault.vin = [
-            CTxIn(outpoint=unvault_outpoint, nSequence=vault.spend_delay)
-        ]
-        final_unvault.vout = final_target_vout
+        final_tx = get_final_withdrawal_tx(
+            unvault_outpoint, final_target_vout, start_unvault_tx)
 
         # Broadcasting before start_unvault is confirmed fails.
         self.assert_broadcast_tx(
-            node, final_unvault, expect_error_msg="non-BIP68-final")
+            node, final_tx, expect_error_msg="non-BIP68-final")
 
         XXX_mempool_fee_hack_for_no_pkg_relay(node, start_unvault_txid)
 
@@ -163,22 +164,22 @@ class VaultsTest(BitcoinTestFramework):
         assert_equal(node.getmempoolinfo()["size"], 0)
 
         self.assert_broadcast_tx(
-            node, final_unvault, expect_error_msg="non-BIP68-final")
+            node, final_tx, expect_error_msg="non-BIP68-final")
 
         self.generate(wallet, 1)
 
         # Generate bad nSequence values.
-        final_bad = copy.deepcopy(final_unvault)
-        final_bad.vin[0].nSequence = final_unvault.vin[0].nSequence - 1
+        final_bad = copy.deepcopy(final_tx)
+        final_bad.vin[0].nSequence = final_tx.vin[0].nSequence - 1
         assert_invalid(final_bad, "timelock has not matured", node)
 
         # Generate bad amounts.
-        final_bad = copy.deepcopy(final_unvault)
-        final_bad.vout[0].nValue = final_unvault.vout[0].nValue - 1
+        final_bad = copy.deepcopy(final_tx)
+        final_bad.vout[0].nValue = final_tx.vout[0].nValue - 1
         assert_invalid(final_bad, "target hash mismatch", node)
 
         # Finally the unvault completes.
-        self.assert_broadcast_tx(node, final_unvault, mine_all=True)
+        self.assert_broadcast_tx(node, final_tx, mine_all=True)
 
     def test_batch_sweep(self, node, wallet):
         """
@@ -283,20 +284,16 @@ class VaultsTest(BitcoinTestFramework):
         unvault_outpoint = COutPoint(
             hash=int.from_bytes(bytes.fromhex(good_txid), byteorder="big"), n=0
         )
-        finalized = CTransaction()
-        finalized.nVersion = 2
-        finalized.vin = [
-            CTxIn(outpoint=unvault_outpoint, nSequence=common_spend_delay)
-        ]
-        finalized.vout = final_target_vout
+        final_tx = get_final_withdrawal_tx(
+            unvault_outpoint, final_target_vout, good_batch_unvault)
 
         self.assert_broadcast_tx(
-            node, finalized, expect_error_msg="non-BIP68-final")
+            node, final_tx, expect_error_msg="non-BIP68-final")
 
         self.generate(node, common_spend_delay)
 
         # Finalize the batch withdrawal.
-        self.assert_broadcast_tx(node, finalized, mine_all=True)
+        self.assert_broadcast_tx(node, final_tx, mine_all=True)
 
     def assert_broadcast_tx(
         self,
@@ -464,55 +461,153 @@ def get_sweep_to_recovery_tx(
     return sweep_tx
 
 
+class UnvaultOutputType(Enum):
+    """
+    Possible forms that the OP_UNVAULT output can take. The latter two conceal
+    the unvault process until it is complete.
+    """
+    Bare = 1
+    P2WSH = 2
+    P2TR = 3
+
+
+# Used to make the OP_UNVAULT output only script-path spendable.
+# See `VAULT_NUMS_INTERNAL_PUBKEY` in script/interpreter.cpp.
+UNVAULT_NUMS_INTERNAL_PUBKEY = bytes.fromhex(
+    "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0")
+
+
+class UnvaultTriggerTransaction(CTransaction):
+    """
+    Used to track metadata about an unvault trigger transaction to make generating
+    the final withdrawal transaction easier.
+    """
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+        # These are set after the transaction has been fully generated.
+        self.unvault_output_type: t.Optional[UnvaultOutputType] = None
+        self.spend_delay: t.Optional[int] = None
+        self.unvault_spk: t.Optional[CScript] = None
+
+        # Only set if the OP_UNVAULT output type is P2TR.
+        self.taproot_info: t.Optional[script.TaprootInfo] = None
+
+
 def get_trigger_unvault_tx(
     target_outputs_hash: bytes,
     vaults: t.List[VaultSpec],
-) -> CTransaction:
+    unvault_output_type: UnvaultOutputType = UnvaultOutputType.P2TR,
+) -> UnvaultTriggerTransaction:
     """
     Return a transaction that triggers the withdrawal process to some arbitrary
     target output set.
     """
     total_vaults_amount_sats = sum(v.total_amount_sats for v in vaults)  # type: ignore
 
+    # Okay to take from the first because we want to error if the vaults don't share
+    # a spend delay.
+    spend_delay = vaults[0].spend_delay
+
     unvault_spk = CScript([
         # <recovery-spk-hash>
         recovery_spk_tagged_hash(vaults[0].recovery_tr_info.scriptPubKey),
         # <spend-delay>
-        vaults[0].spend_delay,
+        spend_delay,
         # <target-outputs-hash>
         target_outputs_hash,
         OP_UNVAULT,
     ])
 
+    trigger_tx = UnvaultTriggerTransaction()
+    trigger_tx.unvault_output_type = unvault_output_type
+    trigger_tx.unvault_spk = unvault_spk
+    trigger_tx.spend_delay = spend_delay
+
     unvault_txout = CTxOut(nValue=total_vaults_amount_sats, scriptPubKey=unvault_spk)
 
-    trigger_unvault = CTransaction()
-    trigger_unvault.nVersion = 2
-    trigger_unvault.vin = [CTxIn(outpoint=v.vault_outpoint) for v in vaults]
-    trigger_unvault.vout = [unvault_txout]
+    if unvault_output_type is UnvaultOutputType.P2WSH:
+        unvault_txout.scriptPubKey = CScript([
+            OP_0, messages.sha256(unvault_spk),
+        ])
+    elif unvault_output_type is UnvaultOutputType.P2TR:
+        nums_tr = script.taproot_construct(
+            UNVAULT_NUMS_INTERNAL_PUBKEY, scripts=[('only-path', unvault_spk, 0xC0)])
+        unvault_txout.scriptPubKey = nums_tr.scriptPubKey
+        # Cache the taproot info for later use when constructing a spend.
+        trigger_tx.taproot_info = nums_tr
+
+    trigger_tx.nVersion = 2
+    trigger_tx.vin = [CTxIn(outpoint=v.vault_outpoint) for v in vaults]
+    trigger_tx.vout = [unvault_txout]
 
     vault_outputs = [v.vault_output for v in vaults]
 
     # Sign the input for each vault and attach a fitting witness.
     for i, vault in enumerate(vaults):
         unvault_sigmsg = script.TaprootSignatureHash(
-            trigger_unvault, vault_outputs, input_index=i, hash_type=0
+            trigger_tx, vault_outputs, input_index=i, hash_type=0
         )
 
         assert isinstance(vault.unvault_tweaked_privkey, bytes)
         unvault_signature = key.sign_schnorr(
             vault.unvault_tweaked_privkey, unvault_sigmsg)
 
-        trigger_unvault.wit.vtxinwit += [messages.CTxInWitness()]
-        trigger_unvault.wit.vtxinwit[i].scriptWitness.stack = [
+        trigger_tx.wit.vtxinwit += [messages.CTxInWitness()]
+
+        optional_target_hash_on_stack = None
+
+        if unvault_output_type in [UnvaultOutputType.P2WSH, UnvaultOutputType.P2TR]:
+            optional_target_hash_on_stack = target_outputs_hash
+
+        trigger_tx.wit.vtxinwit[i].scriptWitness.stack = list(filter(None, (
             unvault_signature,
             vault.unvault_tr_info.scriptPubKey,
+
+            # Note this is filtered out if Bare output used
+            optional_target_hash_on_stack,
+
             vault.vault_spk,
             (bytes([0xC0 + vault.init_tr_info.negflag])
              + vault.init_tr_info.internal_pubkey),
+        )))
+
+    return trigger_tx
+
+
+def get_final_withdrawal_tx(
+    unvault_outpoint: COutPoint,
+    final_target_vout: t.List[CTxOut],
+    unvault_trigger_tx: UnvaultTriggerTransaction,
+) -> CTransaction:
+    """
+    Return the final transaction, withdrawing a balance to the specified target.
+    """
+    assert unvault_trigger_tx.spend_delay is not None
+
+    final_tx = CTransaction()
+    final_tx.nVersion = 2
+    final_tx.vin = [
+        CTxIn(outpoint=unvault_outpoint, nSequence=unvault_trigger_tx.spend_delay)
+    ]
+    final_tx.vout = final_target_vout
+
+    if unvault_trigger_tx.unvault_output_type is UnvaultOutputType.P2WSH:
+        final_tx.wit.vtxinwit += [messages.CTxInWitness()]
+        final_tx.wit.vtxinwit[0].scriptWitness.stack = [
+            unvault_trigger_tx.unvault_spk
+        ]
+    elif unvault_trigger_tx.unvault_output_type is UnvaultOutputType.P2TR:
+        taproot_info = unvault_trigger_tx.taproot_info
+        assert taproot_info
+
+        final_tx.wit.vtxinwit += [messages.CTxInWitness()]
+        final_tx.wit.vtxinwit[0].scriptWitness.stack = [
+            unvault_trigger_tx.unvault_spk,
+            (bytes([0xC0 + taproot_info.negflag]) + taproot_info.internal_pubkey),
         ]
 
-    return trigger_unvault
+    return final_tx
 
 
 def assert_invalid(tx, msg, node):
