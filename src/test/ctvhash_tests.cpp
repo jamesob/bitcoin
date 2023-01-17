@@ -30,7 +30,7 @@ BOOST_AUTO_TEST_CASE(ctvhash_from_data)
     UniValue tests = read_json(std::string(json_tests::ctvhash, json_tests::ctvhash + sizeof(json_tests::ctvhash)));
 
     for (unsigned int idx = 0; idx < tests.size(); idx++) {
-        UniValue test = tests[idx];
+        const UniValue& test = tests[idx];
         std::string strTest = test.write();
         // comment
         if (test.isStr())
