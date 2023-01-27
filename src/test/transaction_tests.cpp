@@ -495,8 +495,8 @@ BOOST_AUTO_TEST_CASE(test_big_witness_transaction)
 
     // check all inputs concurrently, with the cache
     PrecomputedTransactionData txdata(tx);
-    CCheckQueue<CScriptCheck> scriptcheckqueue(128);
-    CCheckQueueControl<CScriptCheck> control(&scriptcheckqueue);
+    CCheckQueue<CScriptCheck, DeferredCheck> scriptcheckqueue(128);
+    CCheckQueueControl<CScriptCheck, DeferredCheck> control(&scriptcheckqueue);
 
     scriptcheckqueue.StartWorkerThreads(20);
 
@@ -518,7 +518,7 @@ BOOST_AUTO_TEST_CASE(test_big_witness_transaction)
         control.Add(vChecks);
     }
 
-    bool controlCheck = control.Wait();
+    auto [controlCheck, _] = control.Wait();
     assert(controlCheck);
     scriptcheckqueue.StopWorkerThreads();
 }
