@@ -11,6 +11,7 @@ transactional structure of vaults.
 
 import copy
 import typing as t
+from collections import defaultdict, Counter
 
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.p2p import P2PInterface
@@ -152,12 +153,18 @@ class VaultsTest(BitcoinTestFramework):
 
         if sweep_from_unvault:
             sweep_tx = get_sweep_to_recovery_tx(
-                {vault: unvault_outpoint}, start_unvault_tx)
+                {vault: unvault_outpoint},
+                start_unvault_tx,
+                presig_tx_mutator=tx_mutator.unvault_with_low_amount)
+            # TODO make this more specific
+            self.assert_broadcast_tx(sweep_tx, err_msg='script-verify-flag')
 
             if type(recovery_auth) != NoRecoveryAuth:
                 for mutation, err in {tx_mutator.recovery_with_bad_witness: 'script-verify-flag'}.items():
                     self.assert_tx_mutation_fails(mutation, sweep_tx, err=err)
 
+            sweep_tx = get_sweep_to_recovery_tx(
+                {vault: unvault_outpoint}, start_unvault_tx)
             self.assert_broadcast_tx(sweep_tx, mine_all=True)
             return
 
@@ -208,11 +215,15 @@ class VaultsTest(BitcoinTestFramework):
             VaultSpec(spend_delay=i) for i in [10, 11, 12]
         ]
 
-        for v in vaults:
+        # Ensure that vaults with different recovery keys can be swept in the same
+        # transaction, using the same fee management.
+        vault_diff_recovery = VaultSpec(recovery_secret=(DEFAULT_RECOVERY_SECRET + 10))
+
+        for v in vaults + [vault_diff_recovery]:
             init_tx = v.get_initialize_vault_tx(wallet)
             self.assert_broadcast_tx(init_tx)
 
-        assert_equal(node.getmempoolinfo()["size"], len(vaults))
+        assert_equal(node.getmempoolinfo()["size"], len(vaults + [vault_diff_recovery]))
         self.generate(wallet, 1)
         assert_equal(node.getmempoolinfo()["size"], 0)
 
@@ -235,12 +246,36 @@ class VaultsTest(BitcoinTestFramework):
 
         assert vaults[1].vault_outpoint
         assert vaults[2].vault_outpoint
+        assert vault_diff_recovery.vault_outpoint
 
-        sweep_tx = get_sweep_to_recovery_tx({
+        outpoint_map = {
             vaults[0]: unvault1_outpoint,
             vaults[1]: vaults[1].vault_outpoint,
             vaults[2]: vaults[2].vault_outpoint,
-        }, unvault1_tx)
+            vault_diff_recovery: vault_diff_recovery.vault_outpoint,
+        }
+
+        sweep_tx = get_sweep_to_recovery_tx(
+            outpoint_map, unvault1_tx,
+            fee_utxo=wallet.get_utxo_as_txin())
+
+        idxs = list(range(len(sweep_tx.vout)))
+        assert len(idxs) == 3
+
+        idx_error = {
+            1: "vault-insufficient-recovery-value",
+            2: "recovery output nValue too low",
+        }
+
+        # TODO clean this up; first vout is the fee bump. too implicit right now.
+        for i, mutator in enumerate([vout_amount_mutator(vout_idx, -1) for vout_idx in [1, 2]]):
+            bad_tx = get_sweep_to_recovery_tx(
+                outpoint_map, unvault1_tx,
+                fee_utxo=wallet.get_utxo_as_txin(),
+                presig_tx_mutator=mutator,
+            )
+            self.assert_broadcast_tx(bad_tx, err_msg=idx_error[i + 1])
+
         self.assert_broadcast_tx(sweep_tx, mine_all=True)
 
     def test_batch_unvault(
@@ -363,11 +398,16 @@ class VaultsTest(BitcoinTestFramework):
         tx_mutator = TxMutator(vaults[0])
         mutation_to_err = {
             tx_mutator.revault_with_high_amount: 'bad-txns-in-belowout',
-            tx_mutator.revault_with_low_amount: 'OP_UNVAULT outputs not compatible',
+            tx_mutator.revault_with_low_amount: 'vault-insufficient-trigger-value',
         }
         for mutation, err in mutation_to_err.items():
-            self.assert_tx_mutation_fails(mutation, unvault_tx, err=err)
+            unvault_tx = get_trigger_unvault_tx(
+                target_out_hash, vaults, revault_amount_sats=revault_amount,
+                presig_tx_mutator=mutation)
+            txid = self.assert_broadcast_tx(unvault_tx, err_msg=err)
 
+        unvault_tx = get_trigger_unvault_tx(
+            target_out_hash, vaults, revault_amount_sats=revault_amount)
         txid = self.assert_broadcast_tx(unvault_tx, mine_all=True)
 
         unvault_outpoint = COutPoint(
@@ -467,6 +507,11 @@ class VaultsTest(BitcoinTestFramework):
         mutation_func(tx_copy)
         self.assert_broadcast_tx(tx_copy, err_msg=err)
 
+
+def vout_amount_mutator(vout_idx, amount=1):
+    def reducer(tx):
+        tx.vout[vout_idx].nValue += amount
+    return reducer
 
 
 def XXX_mempool_fee_hack_for_no_pkg_relay(node, txid: str):
@@ -735,31 +780,53 @@ class UnvaultTriggerTransaction(CTransaction):
         self.spend_witness_stack: t.Optional[list] = None
 
 
-
 def get_sweep_to_recovery_tx(
     vaults_to_outpoints: t.Dict[VaultSpec, messages.COutPoint],
     unvault_trigger_tx: t.Optional[UnvaultTriggerTransaction] = None,
+    fee_utxo: t.Optional[t.Tuple[dict, CTxIn]] = None,
+    presig_tx_mutator: t.Optional[t.Callable] = None,
+    postsig_tx_mutator: t.Optional[t.Callable] = None,
 ) -> CTransaction:
     """
     Generate a transaction that sweeps the vaults to their shared recovery path, either
-    from an OP_VAULT output (TR) or an OP_UNVAULT output (bare), from the pairing
+    from an OP_VAULT output or an OP_UNVAULT output, from the pairing
     outpoints.
 
     If we're sweeping from an OP_UNVAULT trigger output, we need the TaprootInfo which
     accompanies `unvault_trigger_tx`.
     """
     vaults = list(vaults_to_outpoints.keys())
-    total_vaults_amount_sats = sum(v.total_amount_sats for v in vaults)  # type: ignore
+
+    compat_vaults = defaultdict(list)
+    vault_totals: t.Any = Counter()
+    for v in vaults:
+        recov_tr = v.recovery_tr_info
+        compat_vaults[recov_tr].append(v)
+        assert v.total_amount_sats
+        vault_totals[recov_tr] += v.total_amount_sats
 
     sweep_tx = CTransaction()
     sweep_tx.nVersion = 2
     sweep_tx.vin = [
         CTxIn(vaults_to_outpoints[v]) for v in vaults
     ]
-    sweep_tx.vout = [CTxOut(
-        nValue=total_vaults_amount_sats,
-        scriptPubKey=vaults[0].recovery_tr_info.scriptPubKey,
-    )]
+
+    sweep_tx.vout = []
+
+    for recov_tr_info, amount in vault_totals.items():
+        sweep_tx.vout.append(CTxOut(
+            nValue=amount, scriptPubKey=recov_tr_info.scriptPubKey))
+
+    if fee_utxo:
+        FEE_IN_SATS = 10_000
+        sweep_tx.vin.append(fee_utxo[1])
+        sweep_tx.vout.insert(0, CTxOut(
+            nValue=(int(fee_utxo[0]['value'] * COIN) - FEE_IN_SATS),
+            scriptPubKey=CScript([script.OP_TRUE]),
+        ))
+
+    if presig_tx_mutator:
+        presig_tx_mutator(sweep_tx)
 
     for i, vault in enumerate(vaults):
         sweep_tx.wit.vtxinwit += [messages.CTxInWitness()]
@@ -778,7 +845,7 @@ def get_sweep_to_recovery_tx(
             assert spent_output
 
             scriptwit.stack.extend(vault.recovery_auth.get_spend_wit_stack(
-                sweep_tx, i, sweep_tx.vout[0].nValue, spent_output))
+                sweep_tx, i, spent_output.nValue, spent_output))
 
         # If the outpoint we're spending isn't an OP_UNVAULT (i.e. if the unvault
         # process hasn't yet been triggered), then we need to reveal the vault via
@@ -797,6 +864,9 @@ def get_sweep_to_recovery_tx(
             raise ValueError(
                 "must pass `unvault_trigger_tx` if spending from unvault")
 
+    if postsig_tx_mutator:
+        postsig_tx_mutator(sweep_tx)
+
     return sweep_tx
 
 
@@ -810,6 +880,9 @@ def get_trigger_unvault_tx(
     target_hash: bytes,
     vaults: t.List[VaultSpec],
     revault_amount_sats: t.Optional[int] = None,
+    fee_utxo: t.Optional[t.Tuple[dict, CTxIn]] = None,
+    presig_tx_mutator: t.Optional[t.Callable] = None,
+    postsig_tx_mutator: t.Optional[t.Callable] = None,
 ) -> UnvaultTriggerTransaction:
     """
     Return a transaction that triggers the withdrawal process to some arbitrary
@@ -867,6 +940,17 @@ def get_trigger_unvault_tx(
 
     vault_outputs = [v.vault_output for v in vaults]
 
+    if fee_utxo:
+        FEE_IN_SATS = 10_000
+        trigger_tx.vin.append(fee_utxo[1])
+        trigger_tx.vout.insert(0, CTxOut(
+            nValue=(int(fee_utxo[0]['value'] * COIN) - FEE_IN_SATS),
+            scriptPubKey=CScript([script.OP_TRUE]),
+        ))
+
+    if presig_tx_mutator:
+        presig_tx_mutator(trigger_tx)
+
     # Sign the input for each vault and attach a fitting witness.
     for i, vault in enumerate(vaults):
         unvault_sigmsg = script.TaprootSignatureHash(
@@ -887,10 +971,10 @@ def get_trigger_unvault_tx(
              + vault.init_tr_info.internal_pubkey),
         ]
 
+    if postsig_tx_mutator:
+        postsig_tx_mutator(trigger_tx)
+
     return trigger_tx
-
-
-
 
 
 def get_final_withdrawal_tx(

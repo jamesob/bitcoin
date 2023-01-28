@@ -421,46 +421,21 @@ const std::vector<unsigned char> VAULT_NUMS_POINT{
 };
 const XOnlyPubKey VAULT_NUMS_INTERNAL_PUBKEY = XOnlyPubKey(VAULT_NUMS_POINT);
 
-//! Validate that the output being created by spending an OP_VAULT pays to an
-//! OP_UNVAULT script with compatible parameters. The output will either be in
-//! P2WSH or P2TR form.
-static bool CheckUnvaultTriggerOutputsWitness(
-    const int opuv_witversion,
-    const valtype opuv_witprogram,
+//! TODO
+static const valtype GetExpectedUnvaultTriggerWitProgram(
     const valtype& recovery_params,
     const CScriptNum& spend_delay,
-    const uint256& target_hash,
-    bool require_minimal,
-    unsigned int flags,
-    ScriptError* serror)
+    const uint256& target_hash)
 {
     CScript expected_opuv_script;
     expected_opuv_script <<
         ToByteVector(recovery_params) << spend_delay.getint() << ToByteVector(target_hash) << OP_UNVAULT;
-
-    assert(opuv_witversion > 0);
-
-    if (opuv_witversion == 1) {
-        if (opuv_witprogram.size() != WITNESS_V1_TAPROOT_SIZE) {
-            return false;
-        }
-
-        TaprootBuilder trb;
-        trb.Add(0, expected_opuv_script, TAPROOT_LEAF_TAPSCRIPT);
-        assert(trb.IsValid() && trb.IsComplete());
-        trb.Finalize(VAULT_NUMS_INTERNAL_PUBKEY);
-
-        if (memcmp(trb.GetOutput().data(), opuv_witprogram.data(), WITNESS_V1_TAPROOT_SIZE)) {
-            return false;
-        }
-    } else {
-        // Anyone-can-spend for unrecognized witness versions - maintain upgradeability.
-        if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM) {
-            return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_WITNESS_PROGRAM);
-        }
-        return true;
-    }
-    return true;
+    TaprootBuilder trb;
+    trb.Add(0, expected_opuv_script, TAPROOT_LEAF_TAPSCRIPT);
+    assert(trb.IsValid() && trb.IsComplete());
+    trb.Finalize(VAULT_NUMS_INTERNAL_PUBKEY);
+    auto out = trb.GetOutput();
+    return {out.begin(), out.end()};
 }
 
 static bool VerifyNestedWitnessProgram(
@@ -1327,7 +1302,13 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     CScript recovery_spk;
 
                     // Case 1: sweep to recovery
-                    if (checker.CheckVaultSpendToRecoveryOutputs(recovery_params, recovery_spk)) {
+                    const auto& [is_recov_sweep, err] =
+                        checker.CheckVaultSpendToRecoveryOutputs(execdata, recovery_params, recovery_spk);
+
+                    if (is_recov_sweep) {
+                        if (err) {
+                            return set_error(serror, *err);
+                        }
                         // If an optional recovery authorization witness program has been given,
                         // ensure it has been satisfied.
                         if (recovery_spk.size() > 0) {
@@ -1356,25 +1337,6 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                         return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
                     }
 
-                    CScript unvault_output_spk;
-
-                    if (!checker.CheckUnvaultTriggerOutputs(
-                            spend_delay,
-                            fRequireMinimal,
-                            unvault_output_spk)) {
-                        return set_error(serror, SCRIPT_ERR_UNVAULT_MISMATCH);
-                    }
-                    assert(unvault_output_spk.size() > 0);
-
-                    int opuv_witversion;
-                    valtype opuv_witprogram;
-                    const bool is_unvault_output_wit =
-                        unvault_output_spk.IsWitnessProgram(opuv_witversion, opuv_witprogram);
-
-                    if (!is_unvault_output_wit || opuv_witversion < 1) {
-                        return set_error(serror, SCRIPT_ERR_UNVAULT_INCOMPAT_OUTPUT_TYPE);
-                    }
-
                     const valtype& target_hash_data = stacktop(-1);
                     if (target_hash_data.size() != 32) {
                         return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
@@ -1382,10 +1344,12 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     const uint256 target_hash{target_hash_data};
                     popstack(stack);
 
-                    if (!CheckUnvaultTriggerOutputsWitness(
-                            opuv_witversion, opuv_witprogram,
-                            recovery_params, spend_delay, target_hash,
-                            fRequireMinimal, flags, serror)) {
+                    const valtype expected_trigger_output_witprogram =
+                        GetExpectedUnvaultTriggerWitProgram(
+                            recovery_params, spend_delay, target_hash);
+
+                    if (!checker.CheckUnvaultTriggerOutputs(
+                            execdata, expected_trigger_output_witprogram, spend_delay)) {
                         return set_error(serror, SCRIPT_ERR_UNVAULT_MISMATCH);
                     }
 
@@ -1451,7 +1415,13 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     CScript recovery_spk;
 
                     // Case 1: sweep to recovery
-                    if (checker.CheckVaultSpendToRecoveryOutputs(recovery_params, recovery_spk)) {
+                    const auto& [is_recov_sweep, err] =
+                        checker.CheckVaultSpendToRecoveryOutputs(execdata, recovery_params, recovery_spk);
+
+                    if (is_recov_sweep) {
+                        if (err) {
+                            return set_error(serror, *err);
+                        }
                         // If an optional recovery authorization witness program has been given,
                         // ensure it has been satisfied.
                         if (recovery_spk.size() > 0) {
@@ -2057,47 +2027,47 @@ bool GenericTransactionSignatureChecker<T>::CheckSequence(const CScriptNum& nSeq
     return true;
 }
 
-//! Check that
-//!
-//!   1. The number of outputs is either 1 or 2.
-//!   2. The total value of the vault is preserved.
-//!   3. If there is a second output, it is a 0-value ephemeral anchor output.
-//!   4. The recovery scriptPubKey is as expected.
 template <class T>
-bool GenericTransactionSignatureChecker<T>::CheckVaultSpendToRecoveryOutputs(
-    const valtype& recovery_params, CScript& recovery_spk_out) const
+std::pair<bool, std::optional<ScriptError>>
+GenericTransactionSignatureChecker<T>::CheckVaultSpendToRecoveryOutputs(
+    ScriptExecutionData& execdata, const valtype& recovery_params, CScript& recovery_spk_out) const
 {
-    if (!this->txdata) return HandleMissingData(m_mdb);
-    const auto& txd{*this->txdata};
     const auto& vout = this->txTo->vout;
-
-    const auto num_outs = vout.size();
-    if (num_outs < 1 || num_outs > 2) {
-        return false;
-    }
-
-    const CTxOut& value_out = vout[0];
-    if (value_out.nValue != txd.m_total_in) {
-        return false;
-    }
-
-    // Ensure the second output, if one exists, is a 0-value ephemeral anchor.
-    if (num_outs == 2 && !IsOutputEphemeralAnchor(vout[1])) {
-        return false;
-    }
 
     assert(recovery_params.size() >= uint256::WIDTH);
     const valtype& recovery_target_spk_hash_data{
         recovery_params.begin(), recovery_params.begin() + uint256::WIDTH};
     uint256 expected_recovery_target_spk_hash{recovery_target_spk_hash_data};
 
-    uint256 got_target_spk_hash = VaultScriptHash(
-        HASHER_VAULT_RECOVERY_SPK, value_out.scriptPubKey);
+    const CTxOut* value_out{nullptr};
+    unsigned int vout_idx{0};
 
-    // Expected recovery target sPK doesn't match.
-    if (got_target_spk_hash != expected_recovery_target_spk_hash) {
-        return false;
+    for (const auto& output : vout) {
+        uint256 output_spk_hash = VaultScriptHash(
+            HASHER_VAULT_RECOVERY_SPK, output.scriptPubKey);
+
+        if (output_spk_hash == expected_recovery_target_spk_hash) {
+            value_out = &output;
+            break;
+        }
+        vout_idx++;
     }
+
+    if (!value_out) {
+        // Couldn't find an output paying out to the recovery path.
+        return {false, std::nullopt};
+    }
+
+    if (value_out->nValue < this->amount) {
+        // Recovery out value doesn't cover _at least_ the amount of this input.
+        //
+        // Note that because there may be multiple vaulted inputs paying to the same
+        // recovery output, we must use a deferred check to ensure the sum value of
+        // all compatible vaults is paid out.
+        return {true, SCRIPT_ERR_VAULT_LOW_RECOVERY_AMOUNT};
+    }
+
+    execdata.AddDeferredVaultRecoveryCheck(vout_idx, this->amount);
 
     // If an optional recovery authorization has been specified, extract the sPK
     // that it requires to sweep to recovery.
@@ -2105,20 +2075,38 @@ bool GenericTransactionSignatureChecker<T>::CheckVaultSpendToRecoveryOutputs(
         recovery_spk_out = CScript{
             recovery_params.begin() + uint256::WIDTH, recovery_params.end()};
     }
-    return true;
+    return {true, std::nullopt};
 }
 
-
-//! Return true if the given output is a 0-value anchor output.
-static bool IsOutputEphemeralAnchor(const CTxOut& out)
+static bool IsExpectedUnvaultTriggerOut(
+    const valtype& expected_trigger_out_witprogram,
+    const CScript& out_spk)
 {
-    if (out.nValue != 0) {
+    int opuv_witversion;
+    valtype opuv_witprogram;
+    const bool is_unvault_output_wit =
+        out_spk.IsWitnessProgram(opuv_witversion, opuv_witprogram);
+
+    if (!is_unvault_output_wit || opuv_witversion < 1) {
         return false;
     }
-    const CScript& spk = out.scriptPubKey;
-    if (!(spk.size() == 1 && spk[0] == OP_2)) {
+
+    if (opuv_witversion > 1) {
+        // TODO: how do maintain witness upgradeability when we don't know which output
+        // is the value-out?
+        //
+        // Possible push the vout index onto the wit stack?
         return false;
     }
+
+    if (opuv_witprogram.size() != WITNESS_V1_TAPROOT_SIZE) {
+        return false;
+    }
+
+    if (memcmp(expected_trigger_out_witprogram.data(), opuv_witprogram.data(), WITNESS_V1_TAPROOT_SIZE)) {
+        return false;
+    }
+
     return true;
 }
 
@@ -2137,56 +2125,40 @@ static bool IsOutputEphemeralAnchor(const CTxOut& out)
 //! Return the unvault_output_spk in an out param for inspection by the caller.
 template <class T>
 bool GenericTransactionSignatureChecker<T>::CheckUnvaultTriggerOutputs(
-    const CScriptNum& spend_delay,
-    bool require_minimal,
-    CScript& unvault_output_spk) const
+    ScriptExecutionData& execdata,
+    const valtype& expected_trigger_out_witprogram,
+    const CScriptNum& spend_delay) const
 {
     if (!this->txdata) return HandleMissingData(m_mdb);
     const auto& txd{*this->txdata};
-
-    const auto num_outs = this->txTo->vout.size();
-    if (num_outs < 1 || num_outs > 3) {
-        return false;
-    }
 
     CAmount total_val_out_to_vaults{0};
 
     assert(txd.m_spent_outputs_ready);
     const CScript& vault_spk = txd.m_spent_outputs[this->nIn].scriptPubKey;
 
-    bool has_ea{false};
-    bool has_revault{false};
+    unsigned int vout_idx{0};
+    std::optional<unsigned int> trigger_out_idx;
+    std::optional<unsigned int> revault_out_idx;
 
-    // Verify that all optional outputs are either an ephemeral anchor or a revault.
-    // Permit the optional outputs to appear in any order.
-    for (size_t i = 1; i < num_outs; ++i) {
-        const CTxOut& optional_out = this->txTo->vout[i];
-        const bool is_ea = IsOutputEphemeralAnchor(optional_out);
-        const bool is_revault = optional_out.scriptPubKey == vault_spk;
-
-        if (is_ea) {
-            // Only one allowed.
-            if (has_ea) return false;
-            has_ea = true;
-        } else if (is_revault) {
-            // Only one allowed.
-            if (has_revault) return false;
-            has_revault = true;
-            total_val_out_to_vaults += optional_out.nValue;
-        } else {
-            // Has to be either an EA or a revault.
-            return false;
+    for (const auto& out : this->txTo->vout) {
+        if (IsExpectedUnvaultTriggerOut(expected_trigger_out_witprogram, out.scriptPubKey)) {
+            trigger_out_idx = vout_idx;
+            total_val_out_to_vaults += out.nValue;
+        } else if (out.scriptPubKey == vault_spk) {
+            revault_out_idx = vout_idx;
+            total_val_out_to_vaults += out.nValue;
         }
+        vout_idx++;
     }
 
-    const CTxOut& value_out = this->txTo->vout[0];
-    total_val_out_to_vaults += value_out.nValue;
-
-    if (total_val_out_to_vaults != txd.m_total_in) {
+    if (!trigger_out_idx || total_val_out_to_vaults < this->amount) {
+        // Necessary but not sufficient check - other compatible inputs have to be
+        // accounted for.
         return false;
     }
 
-    unvault_output_spk = value_out.scriptPubKey;
+    execdata.AddDeferredVaultTriggerCheck(*trigger_out_idx, revault_out_idx, this->amount);
     return true;
 
 }

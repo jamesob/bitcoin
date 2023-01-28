@@ -201,16 +201,34 @@ enum class SigVersion
 };
 
 
-struct DeferredVaultRecoverySpendCheck
+struct DeferredVaultRecoveryCheck
 {
-    CScript target_spk_hash;
+    //! The recovery value output that should be covering the value of a particular input.
+    unsigned int vout_idx;
+
+    //! An expected constituent amount of the output - note that this isn't the *total*
+    //! expected, but the value required for this specific input.
     CAmount amount;
+
+    DeferredVaultRecoveryCheck(unsigned int vout_idx, CAmount amount) noexcept
+        : vout_idx(vout_idx), amount(amount) {}
+
 };
 
 struct DeferredVaultTriggerCheck
 {
-    CScript expected_target_spk;
+    //! The unvault-trigger value output that should be covering the value of a
+    //! particular input.
+    unsigned int vout_idx;
+
+    //! An optional output that includes a revault balance.
+    std::optional<unsigned int> revault_vout_idx;
+
+    //! The amount of the input to cover - NOT the total expected amount of the output.
     CAmount amount;
+
+    DeferredVaultTriggerCheck(unsigned int vout_idx, std::optional<unsigned int> revault_idx, CAmount amount) noexcept
+        : vout_idx(vout_idx), revault_vout_idx(revault_idx), amount(amount) {}
 };
 
 //! Data that is accumulated during the script verification of a single input and then
@@ -224,10 +242,23 @@ struct DeferredCheck
     //! Set when script execution happens asynchronously so that we can associate
     //! deferred checks with their related transaction when a block's worth of
     //! script executions are performed in batch.
-    const CTransaction* m_tx_to;
+    const CTransaction* m_tx_to{nullptr};
 
-    DeferredVaultRecoverySpendCheck* m_recov_spend_check;
-    DeferredVaultTriggerCheck* m_vault_trigger_check;
+    std::unique_ptr<DeferredVaultRecoveryCheck> m_recov_spend_check{nullptr};
+    std::unique_ptr<DeferredVaultTriggerCheck> m_vault_trigger_check{nullptr};
+
+    DeferredCheck() = default;
+    DeferredCheck(const DeferredCheck&) = delete;
+    DeferredCheck& operator=(const DeferredCheck&) = delete;
+    DeferredCheck(DeferredCheck&& other) noexcept { *this = std::move(other); }
+
+    DeferredCheck& operator=(DeferredCheck&& other)
+    {
+        m_tx_to = other.m_tx_to;
+        m_recov_spend_check = std::move(other.m_recov_spend_check);
+        m_vault_trigger_check = std::move(other.m_vault_trigger_check);
+        return *this;
+    }
 };
 
 
@@ -263,12 +294,27 @@ struct ScriptExecutionData
     //! The deferred checks are aggregated and executed in `validation.cpp`.
     std::vector<DeferredCheck>* m_deferred_checks;
 
-    void AppendDeferredCheck(DeferredCheck dc)
+    DeferredCheck& NewDeferredCheck()
     {
         if (!m_deferred_checks) {
             m_deferred_checks = new std::vector<DeferredCheck>();
         }
-        m_deferred_checks->push_back(dc);
+        m_deferred_checks->emplace_back();
+        return m_deferred_checks->back();
+    }
+
+    void AddDeferredVaultRecoveryCheck(unsigned int vout_idx, CAmount amount)
+    {
+        auto& dc = this->NewDeferredCheck();
+        dc.m_recov_spend_check = std::make_unique<DeferredVaultRecoveryCheck>(
+            vout_idx, amount);
+    }
+
+    void AddDeferredVaultTriggerCheck(unsigned int vout_idx, std::optional<unsigned int> revault_idx, CAmount amount)
+    {
+        auto& dc = this->NewDeferredCheck();
+        dc.m_vault_trigger_check = std::make_unique<DeferredVaultTriggerCheck>(
+            vout_idx, revault_idx, amount);
     }
 };
 
@@ -315,17 +361,18 @@ public:
          return false;
     }
 
-    virtual bool CheckVaultSpendToRecoveryOutputs(
+    virtual std::pair<bool, std::optional<ScriptError>> CheckVaultSpendToRecoveryOutputs(
+        ScriptExecutionData& execdata,
         const std::vector<unsigned char>& recovery_params,
         CScript& recovery_spk_out) const
     {
-         return false;
+         return {false, std::nullopt};
     }
 
     virtual bool CheckUnvaultTriggerOutputs(
-        const CScriptNum& spend_delay,
-        bool require_minimal,
-        CScript& unvault_output_spk) const
+        ScriptExecutionData& execdata,
+        const std::vector<unsigned char>& expected_trigger_out_witprogram,
+        const CScriptNum& spend_delay) const
     {
          return false;
     }
@@ -356,7 +403,9 @@ class GenericTransactionSignatureChecker : public BaseSignatureChecker
 private:
     const T* txTo;
     const MissingDataBehavior m_mdb;
+    //! The index of the current input being spent in txTo->vin.
     unsigned int nIn;
+    //! The amount of the current input being spent.
     const CAmount amount;
     const PrecomputedTransactionData* txdata;
 
@@ -371,13 +420,14 @@ public:
     bool CheckSchnorrSignature(Span<const unsigned char> sig, Span<const unsigned char> pubkey, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror = nullptr) const override;
     bool CheckLockTime(const CScriptNum& nLockTime) const override;
     bool CheckSequence(const CScriptNum& nSequence) const override;
-    bool CheckVaultSpendToRecoveryOutputs(
+    std::pair<bool, std::optional<ScriptError>> CheckVaultSpendToRecoveryOutputs(
+        ScriptExecutionData& execdata,
         const std::vector<unsigned char>& recovery_params,
         CScript& recovery_spk_out) const override;
     bool CheckUnvaultTriggerOutputs(
-        const CScriptNum& spend_delay,
-        bool require_minimal,
-        CScript& unvault_output_spk) const override;
+        ScriptExecutionData& execdata,
+        const std::vector<unsigned char>& expected_trigger_out_witprogram,
+        const CScriptNum& spend_delay) const override;
     bool CheckUnvaultTarget(const uint256& target_outputs_hash) const override;
 };
 
@@ -410,19 +460,19 @@ public:
     {
         return m_checker.CheckSequence(nSequence);
     }
-    bool CheckVaultSpendToRecoveryOutputs(
+    std::pair<bool, std::optional<ScriptError>> CheckVaultSpendToRecoveryOutputs(
+        ScriptExecutionData& execdata,
         const std::vector<unsigned char>& recovery_params,
         CScript& recovery_spk_out) const override
     {
-        return m_checker.CheckVaultSpendToRecoveryOutputs(recovery_params, recovery_spk_out);
+        return m_checker.CheckVaultSpendToRecoveryOutputs(execdata, recovery_params, recovery_spk_out);
     }
     bool CheckUnvaultTriggerOutputs(
-        const CScriptNum& spend_delay,
-        bool require_minimal,
-        CScript& unvault_output_spk) const override
+        ScriptExecutionData& execdata,
+        const std::vector<unsigned char>& expected_trigger_out_witprogram,
+        const CScriptNum& spend_delay) const override
     {
-        return m_checker.CheckUnvaultTriggerOutputs(
-            spend_delay, require_minimal, unvault_output_spk);
+        return m_checker.CheckUnvaultTriggerOutputs(execdata, expected_trigger_out_witprogram, spend_delay);
     }
     bool CheckUnvaultTarget(const uint256& target_outputs_hash) const override
     {

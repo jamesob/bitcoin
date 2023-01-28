@@ -109,7 +109,7 @@ private:
                         fAllOk = true;
 
                         // return the current status
-                        return std::make_pair(fRet, results);
+                        return std::make_pair(fRet, std::move(results));
                     }
                     nIdle++;
                     cond.wait(lock); // wait
@@ -141,7 +141,7 @@ private:
                     fOk = check();
 
                     if (fOk && check.m_deferred_checks && check.m_deferred_checks->size() > 0) {
-                        const auto& dc = *check.m_deferred_checks;
+                        auto& dc = *check.m_deferred_checks;
                         results.insert(
                             results.end(),
                             std::make_move_iterator(dc.begin()),

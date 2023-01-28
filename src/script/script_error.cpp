@@ -121,6 +121,8 @@ std::string ScriptErrorString(const ScriptError serror)
             return "OP_UNVAULT output must be at least witness v1";
         case SCRIPT_ERR_VAULT_INVALID_RECOVERY_PARAMS:
             return "Vault recovery params are malformed";
+        case SCRIPT_ERR_VAULT_LOW_RECOVERY_AMOUNT:
+            return "Vault recovery output nValue too low";
         case SCRIPT_ERR_VAULT_WRONG_TRIGGER_WITNESS_PROGRAM:
             return "OP_UNVAULT trigger scriptPubKey does not match OP_VAULT hash";
         case SCRIPT_ERR_VAULT_NESTED_SCRIPT_NOT_WITNESS:
