@@ -919,3 +919,29 @@ op_success_overrides = {
     OP_VAULT,
     OP_UNVAULT,
 }
+
+
+def pprint_tx(tx: CTransaction) -> str:
+    s = f"CTransaction: (nVersion={tx.nVersion})\n"
+    s += "  vin:\n"
+    for i, inp in enumerate(tx.vin):
+        s += f"    - [{i}] {inp}\n"
+    s += "  vout:\n"
+    for i, out in enumerate(tx.vout):
+        s += f"    - [{i}] {out}\n"
+
+    s += "  witnesses:\n"
+    for i, wit in enumerate(tx.wit.vtxinwit):
+        s += f"    - [{i}]\n"
+        for j, item in enumerate(wit.scriptWitness.stack):
+            if type(item) == bytes:
+                scriptstr = repr(CScript([item]))
+            elif type(item) == CScript:
+                scriptstr = repr(item)
+            else:
+                raise NotImplementedError
+
+            s += f"      - [{i}.{j}] {scriptstr}\n"
+
+    s += f"  nLockTime: {tx.nLockTime}\n"
+    return s
