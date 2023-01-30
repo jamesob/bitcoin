@@ -158,8 +158,7 @@ BITCOIN_TESTS =\
   test/validation_chainstatemanager_tests.cpp \
   test/validation_flush_tests.cpp \
   test/validation_tests.cpp \
-  test/validationinterface_tests.cpp \
-  test/versionbits_tests.cpp
+  test/validationinterface_tests.cpp
 
 if ENABLE_WALLET
 BITCOIN_TESTS += \
@@ -335,8 +334,7 @@ test_fuzz_fuzz_SOURCES = \
  test/fuzz/txorphan.cpp \
  test/fuzz/txrequest.cpp \
  test/fuzz/utxo_snapshot.cpp \
- test/fuzz/validation_load_mempool.cpp \
- test/fuzz/versionbits.cpp
+ test/fuzz/validation_load_mempool.cpp
 endif # ENABLE_FUZZ_BINARY
 
 nodist_test_test_bitcoin_SOURCES = $(GENERATED_TEST_FILES)
