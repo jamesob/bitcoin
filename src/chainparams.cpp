@@ -54,6 +54,30 @@ static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits
     return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nNonce, nBits, nVersion, genesisReward);
 }
 
+namespace {
+struct SetupDeployment
+{
+    uint16_t bip = 0;
+    uint8_t bip_version = 0;
+    int64_t start = 0;
+    int64_t timeout = 0;
+    int32_t activate = -1;
+    int32_t abandon = -1;
+    bool always = false;
+    bool never = false;
+
+    operator Consensus::HereticalDeployment () const
+    {
+        return Consensus::HereticalDeployment{
+            .signal_activate = (activate >= 0 ? activate : CalculateActivateVersion(bip, bip_version)),
+            .signal_abandon = (abandon >= 0 ? abandon : CalculateAbandonVersion(bip, bip_version)),
+            .nStartTime = (always ? Consensus::HereticalDeployment::ALWAYS_ACTIVE : never ? Consensus::HereticalDeployment::NEVER_ACTIVE : start),
+            .nTimeout = (always || never ? Consensus::HereticalDeployment::NO_TIMEOUT : timeout),
+        };
+    }
+};
+}
+
 /**
  * Main network on which people trade goods and services.
  */
@@ -83,10 +107,7 @@ public:
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 1815; // 90% of 2016
         consensus.nMinerConfirmationWindow = 2016; // nPowTargetTimespan / nPowTargetSpacing
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].min_activation_height = 0; // No activation delay
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY] = SetupDeployment{.activate = 0x30000000, .abandon = 0, .never = true};
 
         consensus.nMinimumChainWork = uint256S("0x00000000000000000000000000000000000000003404ba0801921119f903495e");
         consensus.defaultAssumeValid = uint256S("0x00000000000000000009c97098b5295f7e5f183ac811fb5d1534040adb93cabd"); // 751565
@@ -198,10 +219,7 @@ public:
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 1512; // 75% for testchains
         consensus.nMinerConfirmationWindow = 2016; // nPowTargetTimespan / nPowTargetSpacing
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].min_activation_height = 0; // No activation delay
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY] = SetupDeployment{.activate = 0x30000000, .abandon = 0, .never = true};
 
         consensus.nMinimumChainWork = uint256S("0x00000000000000000000000000000000000000000000076f6e7cbd0beade5d20");
         consensus.defaultAssumeValid = uint256S("0x0000000000000004877fa2d36316398528de4f347df2f8a96f76613a298ce060"); // 2344474
@@ -327,14 +345,11 @@ public:
         consensus.nPowTargetSpacing = 10 * 60;
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.fPowNoRetargeting = false;
-        consensus.nRuleChangeActivationThreshold = 1815; // 90% of 2016
-        consensus.nMinerConfirmationWindow = 2016; // nPowTargetTimespan / nPowTargetSpacing
+        consensus.nRuleChangeActivationThreshold = 432; // 100% of 432 (unused)
+        consensus.nMinerConfirmationWindow = 432; // 3 days
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("00000377ae000000000000000000000000000000000000000000000000000000");
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].min_activation_height = 0; // No activation delay
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY] = SetupDeployment{.activate = 0x30000000, .abandon = 0, .never = true};
 
         // message start is defined as the first 4 bytes of the sha256d of the block script
         HashWriter h{};
@@ -394,10 +409,8 @@ public:
         consensus.nRuleChangeActivationThreshold = 108; // 75% for testchains
         consensus.nMinerConfirmationWindow = 144; // Faster than normal for regtest (144 instead of 2016)
 
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = 0;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].min_activation_height = 0; // No activation delay
+        // 0x3000_0000 = bit 28 plus versionbits signalling; 0x5000_0000 = bit 38 plus VERSIONBITS_TOP_ABANDON
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY] = SetupDeployment{.start = 0, .timeout = Consensus::HereticalDeployment::NO_TIMEOUT, .activate = 0x30000000, .abandon = 0x50000000};
 
         consensus.nMinimumChainWork = uint256{};
         consensus.defaultAssumeValid = uint256{};
@@ -462,11 +475,10 @@ public:
     /**
      * Allows modifying the Version Bits regtest parameters.
      */
-    void UpdateVersionBitsParameters(Consensus::DeploymentPos d, int64_t nStartTime, int64_t nTimeout, int min_activation_height)
+    void UpdateVersionBitsParameters(Consensus::DeploymentPos d, int64_t nStartTime, int64_t nTimeout)
     {
         consensus.vDeployments[d].nStartTime = nStartTime;
         consensus.vDeployments[d].nTimeout = nTimeout;
-        consensus.vDeployments[d].min_activation_height = min_activation_height;
     }
     void UpdateActivationParametersFromArgs(const ArgsManager& args);
 };
@@ -510,26 +522,22 @@ void CRegTestParams::UpdateActivationParametersFromArgs(const ArgsManager& args)
 
     for (const std::string& strDeployment : args.GetArgs("-vbparams")) {
         std::vector<std::string> vDeploymentParams = SplitString(strDeployment, ':');
-        if (vDeploymentParams.size() < 3 || 4 < vDeploymentParams.size()) {
-            throw std::runtime_error("Version bits parameters malformed, expecting deployment:start:end[:min_activation_height]");
+        if (vDeploymentParams.size() < 3 || 3 < vDeploymentParams.size()) {
+            throw std::runtime_error("Version bits parameters malformed, expecting deployment:start:end");
         }
         int64_t nStartTime, nTimeout;
-        int min_activation_height = 0;
         if (!ParseInt64(vDeploymentParams[1], &nStartTime)) {
             throw std::runtime_error(strprintf("Invalid nStartTime (%s)", vDeploymentParams[1]));
         }
         if (!ParseInt64(vDeploymentParams[2], &nTimeout)) {
             throw std::runtime_error(strprintf("Invalid nTimeout (%s)", vDeploymentParams[2]));
         }
-        if (vDeploymentParams.size() >= 4 && !ParseInt32(vDeploymentParams[3], &min_activation_height)) {
-            throw std::runtime_error(strprintf("Invalid min_activation_height (%s)", vDeploymentParams[3]));
-        }
         bool found = false;
         for (int j=0; j < (int)Consensus::MAX_VERSION_BITS_DEPLOYMENTS; ++j) {
             if (vDeploymentParams[0] == VersionBitsDeploymentInfo[j].name) {
-                UpdateVersionBitsParameters(Consensus::DeploymentPos(j), nStartTime, nTimeout, min_activation_height);
+                UpdateVersionBitsParameters(Consensus::DeploymentPos(j), nStartTime, nTimeout);
                 found = true;
-                LogPrintf("Setting version bits activation parameters for %s to start=%ld, timeout=%ld, min_activation_height=%d\n", vDeploymentParams[0], nStartTime, nTimeout, min_activation_height);
+                LogPrintf("Setting version bits activation parameters for %s to start=%ld, timeout=%ld\n", vDeploymentParams[0], nStartTime, nTimeout);
                 break;
             }
         }
