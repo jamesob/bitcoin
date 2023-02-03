@@ -11,6 +11,7 @@
 #include <primitives/transaction.h>
 #include <script/keyorigin.h>
 #include <script/miniscript.h>
+#include <script/script.h>
 #include <script/signingprovider.h>
 #include <script/standard.h>
 #include <uint256.h>
@@ -364,23 +365,6 @@ static bool SignStep(const SigningProvider& provider, const BaseSignatureCreator
         return SignTaproot(provider, creator, WitnessV1Taproot(XOnlyPubKey{vSolutions[0]}), sigdata, ret);
     } // no default case, so the compiler can warn about missing cases
     assert(false);
-}
-
-static CScript PushAll(const std::vector<valtype>& values)
-{
-    CScript result;
-    for (const valtype& v : values) {
-        if (v.size() == 0) {
-            result << OP_0;
-        } else if (v.size() == 1 && v[0] >= 1 && v[0] <= 16) {
-            result << CScript::EncodeOP_N(v[0]);
-        } else if (v.size() == 1 && v[0] == 0x81) {
-            result << OP_1NEGATE;
-        } else {
-            result << v;
-        }
-    }
-    return result;
 }
 
 template<typename M, typename K, typename V>
