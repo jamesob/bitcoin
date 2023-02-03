@@ -131,6 +131,12 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_CHECKTEMPLATEVERIFY] = SetupDeployment{.bip = 119, .bip_version = 0, .never = true};
         consensus.vDeployments[Consensus::DEPLOYMENT_ANYPREVOUT] = SetupDeployment{.bip = 118, .bip_version = 0, .never = true};
 
+        // Deployment of OP_VAULT (BIP xxx)
+        consensus.vDeployments[Consensus::DEPLOYMENT_VAULT].bit = 3;
+        consensus.vDeployments[Consensus::DEPLOYMENT_VAULT].nStartTime = 1737840001; // XXX FIXME
+        consensus.vDeployments[Consensus::DEPLOYMENT_VAULT].nTimeout = 1769376001; // XXX FIXME
+        consensus.vDeployments[Consensus::DEPLOYMENT_VAULT].min_activation_height = 1'717'632; // XXX FIXME
+
         consensus.nMinimumChainWork = uint256S("0x00000000000000000000000000000000000000003404ba0801921119f903495e");
         consensus.defaultAssumeValid = uint256S("0x00000000000000000009c97098b5295f7e5f183ac811fb5d1534040adb93cabd"); // 751565
 
@@ -244,6 +250,12 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY] = SetupDeployment{.activate = 0x30000000, .abandon = 0, .never = true};
         consensus.vDeployments[Consensus::DEPLOYMENT_CHECKTEMPLATEVERIFY] = SetupDeployment{.bip = 119, .bip_version = 0, .never = true};
         consensus.vDeployments[Consensus::DEPLOYMENT_ANYPREVOUT] = SetupDeployment{.bip = 118, .bip_version = 0, .never = true};
+
+        // Deployment of OP_VAULT (BIP xxx)
+        consensus.vDeployments[Consensus::DEPLOYMENT_VAULT].bit = 3;
+        consensus.vDeployments[Consensus::DEPLOYMENT_VAULT].nStartTime = 2619222400; // XXX FIXME
+        consensus.vDeployments[Consensus::DEPLOYMENT_VAULT].nTimeout = 2628640000; // XXX FIXME
+        consensus.vDeployments[Consensus::DEPLOYMENT_VAULT].min_activation_height = 0;
 
         consensus.nMinimumChainWork = uint256S("0x00000000000000000000000000000000000000000000076f6e7cbd0beade5d20");
         consensus.defaultAssumeValid = uint256S("0x0000000000000004877fa2d36316398528de4f347df2f8a96f76613a298ce060"); // 2344474
@@ -401,6 +413,12 @@ public:
         };
         RenounceDeployments(args, consensus.vDeployments);
 
+        // Deployment of OP_VAULT (BIP xxx)
+        consensus.vDeployments[Consensus::DEPLOYMENT_VAULT].bit = 3;
+        consensus.vDeployments[Consensus::DEPLOYMENT_VAULT].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_VAULT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_VAULT].min_activation_height = 0;
+
         // message start is defined as the first 4 bytes of the sha256d of the block script
         HashWriter h{};
         h << consensus.signet_challenge;
@@ -463,6 +481,11 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY] = SetupDeployment{.start = 0, .timeout = Consensus::HereticalDeployment::NO_TIMEOUT, .activate = 0x30000000, .abandon = 0x50000000};
         consensus.vDeployments[Consensus::DEPLOYMENT_CHECKTEMPLATEVERIFY] = SetupDeployment{.bip = 119, .bip_version = 0, .always = true};
         consensus.vDeployments[Consensus::DEPLOYMENT_ANYPREVOUT] = SetupDeployment{.bip = 118, .bip_version = 0, .always = true};
+
+        consensus.vDeployments[Consensus::DEPLOYMENT_VAULT].bit = 3;
+        consensus.vDeployments[Consensus::DEPLOYMENT_VAULT].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_VAULT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_VAULT].min_activation_height = 0;
 
         consensus.nMinimumChainWork = uint256{};
         consensus.defaultAssumeValid = uint256{};

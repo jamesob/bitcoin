@@ -1657,6 +1657,7 @@ static std::vector<unsigned int> AllConsensusFlags()
         if (i & 32) flag |= SCRIPT_VERIFY_WITNESS;
         if (i & 64) flag |= SCRIPT_VERIFY_TAPROOT;
         if (i & 128) flag |= SCRIPT_VERIFY_ANYPREVOUT;
+        if (i & 256) flag |= SCRIPT_VERIFY_VAULT;
 
         // SCRIPT_VERIFY_WITNESS requires SCRIPT_VERIFY_P2SH
         if (flag & SCRIPT_VERIFY_WITNESS && !(flag & SCRIPT_VERIFY_P2SH)) continue;
@@ -1664,6 +1665,8 @@ static std::vector<unsigned int> AllConsensusFlags()
         if (flag & SCRIPT_VERIFY_TAPROOT && !(flag & SCRIPT_VERIFY_WITNESS)) continue;
         // SCRIPT_VERIFY_ANYPREVOUT requires SCRIPT_VERIFY_TAPROOT
         if ((flag & SCRIPT_VERIFY_ANYPREVOUT) && !(flag & SCRIPT_VERIFY_TAPROOT)) continue;
+        // SCRIPT_VERIFY_VAULT requires SCRIPT_VERIFY_TAPROOT
+        if (flag & SCRIPT_VERIFY_VAULT && !(flag & SCRIPT_VERIFY_TAPROOT)) continue;
 
         ret.push_back(flag);
     }
