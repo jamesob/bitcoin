@@ -116,6 +116,12 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartTime = 1619222400; // April 24th, 2021
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = 1628640000; // August 11th, 2021
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 709632; // Approximately November 12th, 2021
+                                                                                              //
+        // Deployment of CTV (BIP-119), CAT (BIP-347), CSFS (BIP-348)
+        consensus.vDeployments[Consensus::DEPLOYMENT_COVOPS].bit = 3;
+        consensus.vDeployments[Consensus::DEPLOYMENT_COVOPS].nStartTime = 1748736000; // 2025-06-01, XXX FIXME
+        consensus.vDeployments[Consensus::DEPLOYMENT_COVOPS].nTimeout = 1756684800; // 2025-09-01, XXX FIXME
+        consensus.vDeployments[Consensus::DEPLOYMENT_COVOPS].min_activation_height = 0; // XXX
 
         consensus.nMinimumChainWork = uint256{"000000000000000000000000000000000000000088e186b70e0862c193ec44d6"};
         consensus.defaultAssumeValid = uint256{"000000000000000000011c5890365bdbe5d25b97ce0057589acaef4f1a57263f"}; // 856760
@@ -241,6 +247,12 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = 1628640000; // August 11th, 2021
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0; // No activation delay
 
+        // Deployment of CTV (BIP-119), CAT (BIP-347), CSFS (BIP-348)
+        consensus.vDeployments[Consensus::DEPLOYMENT_COVOPS].bit = 3;
+        consensus.vDeployments[Consensus::DEPLOYMENT_COVOPS].nStartTime = 1748736000; // 2025-06-01, XXX FIXME
+        consensus.vDeployments[Consensus::DEPLOYMENT_COVOPS].nTimeout = 1756684800; // 2025-09-01, XXX FIXME
+        consensus.vDeployments[Consensus::DEPLOYMENT_COVOPS].min_activation_height = 0; // XXX FIXME
+
         consensus.nMinimumChainWork = uint256{"000000000000000000000000000000000000000000000f209695166be8b61fa9"};
         consensus.defaultAssumeValid = uint256{"000000000000000465b1a66c9f386308e8c75acef9201f3f577811da09fc90ad"}; // 2873500
 
@@ -340,6 +352,12 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0; // No activation delay
 
+        // Deployment of CTV (BIP-119), CAT (BIP-347), CSFS (BIP-348)
+        consensus.vDeployments[Consensus::DEPLOYMENT_COVOPS].bit = 3;
+        consensus.vDeployments[Consensus::DEPLOYMENT_COVOPS].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_COVOPS].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_COVOPS].min_activation_height = 0; // No activation delay
+                                                                                   //
         consensus.nMinimumChainWork = uint256{"00000000000000000000000000000000000000000000005faa15d02e6202f3ba"};
         consensus.defaultAssumeValid = uint256{"000000005be348057db991fa5d89fe7c4695b667cfb311391a8db374b6f681fd"}; // 39550
 
@@ -480,6 +498,12 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0; // No activation delay
 
+        // Deployment of CTV (BIP-119), CAT (BIP-347), CSFS (BIP-348)
+        consensus.vDeployments[Consensus::DEPLOYMENT_COVOPS].bit = 3;
+        consensus.vDeployments[Consensus::DEPLOYMENT_COVOPS].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_COVOPS].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_COVOPS].min_activation_height = 0; // No activation delay
+
         // message start is defined as the first 4 bytes of the sha256d of the block script
         HashWriter h{};
         h << consensus.signet_challenge;
@@ -556,6 +580,12 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0; // No activation delay
+
+        // Deployment of CTV (BIP-119), CAT (BIP-347), CSFS (BIP-348)
+        consensus.vDeployments[Consensus::DEPLOYMENT_COVOPS].bit = 3;
+        consensus.vDeployments[Consensus::DEPLOYMENT_COVOPS].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_COVOPS].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_COVOPS].min_activation_height = 0; // No activation delay
 
         consensus.nMinimumChainWork = uint256{};
         consensus.defaultAssumeValid = uint256{};
