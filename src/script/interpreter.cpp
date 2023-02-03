@@ -593,15 +593,18 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
 
                 case OP_CHECKTEMPLATEVERIFY:
                 {
+                    if (flags & SCRIPT_VERIFY_DISCOURAGE_CHECK_TEMPLATE_VERIFY_HASH) {
+                        return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_NOPS);
+                    }
+
                     // if flags not enabled; treat as a NOP4
                     if (!(flags & SCRIPT_VERIFY_DEFAULT_CHECK_TEMPLATE_VERIFY_HASH)) {
-                        if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS)
-                            return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_NOPS);
                         break;
                     }
 
-                    if (stack.size() < 1)
+                    if (stack.size() < 1) {
                         return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
+                    }
 
                     // If the argument was not 32 bytes, treat as OP_NOP4:
                     switch (stack.back().size()) {
@@ -616,7 +619,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                         default:
                             // future upgrade can add semantics for this opcode with different length args
                             // so discourage use when applicable
-                            if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_NOPS) {
+                            if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_CHECK_TEMPLATE_VERIFY_HASH) {
                                 return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_NOPS);
                             }
                     }

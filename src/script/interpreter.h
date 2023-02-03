@@ -142,8 +142,13 @@ enum : uint32_t {
     SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_PUBKEYTYPE = (1U << 20),
 
     // support OP_CHECKTEMPLATEVERIFY for standard template
-    //
     SCRIPT_VERIFY_DEFAULT_CHECK_TEMPLATE_VERIFY_HASH = (1U << 21),
+
+    // discourage upgradable OP_CHECKTEMPLATEVERIFY hashes
+    SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_CHECK_TEMPLATE_VERIFY_HASH = (1U << 22),
+
+    // discourage OP_CHECKTEMPLATEVERIFY
+    SCRIPT_VERIFY_DISCOURAGE_CHECK_TEMPLATE_VERIFY_HASH = (1U << 23),
 
     // Constants to point to the highest flag in use. Add new flags above this line.
     //
