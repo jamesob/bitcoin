@@ -258,6 +258,9 @@ OP_CHECKSIGADD = CScriptOp(0xba)
 
 OP_INVALIDOPCODE = CScriptOp(0xff)
 
+OP_VAULT = CScriptOp(0xbb)
+OP_VAULT_RECOVER = CScriptOp(0xbc)
+
 OPCODE_NAMES.update({
     OP_0: 'OP_0',
     OP_PUSHDATA1: 'OP_PUSHDATA1',
@@ -371,6 +374,8 @@ OPCODE_NAMES.update({
     OP_NOP9: 'OP_NOP9',
     OP_NOP10: 'OP_NOP10',
     OP_CHECKSIGADD: 'OP_CHECKSIGADD',
+    OP_VAULT: 'OP_VAULT',
+    OP_VAULT_RECOVER: 'OP_VAULT_RECOVER',
     OP_INVALIDOPCODE: 'OP_INVALIDOPCODE',
 })
 
@@ -438,7 +443,7 @@ class CScript(bytes):
     __slots__ = ()
 
     @classmethod
-    def __coerce_instance(cls, other):
+    def __coerce_instance(cls, other) -> bytes:
         # Coerce other into bytes
         if isinstance(other, CScriptOp):
             other = bytes([other])
@@ -457,10 +462,6 @@ class CScript(bytes):
         elif isinstance(other, (bytes, bytearray)):
             other = CScriptOp.encode_op_pushdata(other)
         return other
-
-    def __add__(self, other):
-        # add makes no sense for a CScript()
-        raise NotImplementedError
 
     def join(self, iterable):
         # join makes no sense for a CScript()
@@ -894,6 +895,14 @@ class TaprootInfo(namedtuple("TaprootInfo", "scriptPubKey,internal_pubkey,negfla
     def __hash__(self):
         return hash(str(self))
 
+    def controlblock_for_script_spend(self, script_name: str) -> bytes:
+        leaf = self.leaves[script_name]
+        return (
+            bytes([leaf.version + self.negflag]) +
+            self.internal_pubkey +
+            leaf.merklebranch
+        )
+
 # A TaprootLeafInfo object has the following fields:
 # - script: the leaf script (CScript or bytes)
 # - version: the leaf version (0xc0 for BIP342 tapscript)
@@ -929,8 +938,13 @@ def taproot_construct(pubkey, scripts=None, keyver=None):
 def is_op_success(o):
     return o == 0x50 or o == 0x62 or o == 0x89 or o == 0x8a or o == 0x8d or o == 0x8e or (o >= 0x7e and o <= 0x81) or (o >= 0x83 and o <= 0x86) or (o >= 0x95 and o <= 0x99) or (o >= 0xbb and o <= 0xfe)
 
+op_success_overrides = {
+    OP_VAULT,
+    OP_VAULT_RECOVER,
+}
 
-def pprint_tx(tx: CTransaction) -> str:
+
+def pprint_tx(tx: CTransaction) -> None:
     s = f"CTransaction: (nVersion={tx.nVersion})\n"
     s += "  vin:\n"
     for i, inp in enumerate(tx.vin):
@@ -945,7 +959,7 @@ def pprint_tx(tx: CTransaction) -> str:
         for j, item in enumerate(wit.scriptWitness.stack):
             if type(item) == bytes:
                 scriptstr = repr(CScript([item]))
-            elif type(item) == CScript:
+            elif type(item) in {CScript, CScriptNum}:
                 scriptstr = repr(item)
             else:
                 raise NotImplementedError
@@ -953,4 +967,4 @@ def pprint_tx(tx: CTransaction) -> str:
             s += f"      - [{i}.{j}] {scriptstr}\n"
 
     s += f"  nLockTime: {tx.nLockTime}\n"
-    return s
+    print(s)
