@@ -135,6 +135,8 @@ std::string ScriptErrorString(const ScriptError serror)
             return "OP_UNVAULT output target hash mismatch";
         case SCRIPT_ERR_RECURSION_TOO_DEEP:
             return "Too many recursive calls to script interpreter";
+        case SCRIPT_ERR_VAULT_BAD_VOUT_IDX:
+            return "Invalid vout index passed for unvault trigger";
         case SCRIPT_ERR_UNKNOWN_ERROR:
         case SCRIPT_ERR_ERROR_COUNT:
         default: break;

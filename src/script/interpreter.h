@@ -22,6 +22,11 @@ class CTransaction;
 class CTxOut;
 class uint256;
 
+namespace
+{
+    typedef std::vector<unsigned char> valtype;
+}
+
 /** Signature hash types/flags */
 enum
 {
@@ -371,8 +376,12 @@ public:
 
     virtual bool CheckUnvaultTriggerOutputs(
         ScriptExecutionData& execdata,
-        const std::vector<unsigned char>& expected_trigger_out_witprogram,
-        const CScriptNum& spend_delay) const
+        const uint32_t trigger_out_idx,
+        const valtype& recovery_params,
+        const CScriptNum& spend_delay,
+        const uint256& target_hash,
+        unsigned int flags,
+        ScriptError* serror) const
     {
          return false;
     }
@@ -426,8 +435,12 @@ public:
         CScript& recovery_spk_out) const override;
     bool CheckUnvaultTriggerOutputs(
         ScriptExecutionData& execdata,
-        const std::vector<unsigned char>& expected_trigger_out_witprogram,
-        const CScriptNum& spend_delay) const override;
+        const uint32_t trigger_out_idx,
+        const valtype& recovery_params,
+        const CScriptNum& spend_delay,
+        const uint256& target_hash,
+        unsigned int flags,
+        ScriptError* serror) const override;
     bool CheckUnvaultTarget(const uint256& target_outputs_hash) const override;
 };
 
@@ -469,10 +482,15 @@ public:
     }
     bool CheckUnvaultTriggerOutputs(
         ScriptExecutionData& execdata,
-        const std::vector<unsigned char>& expected_trigger_out_witprogram,
-        const CScriptNum& spend_delay) const override
+        const uint32_t trigger_out_idx,
+        const valtype& recovery_params,
+        const CScriptNum& spend_delay,
+        const uint256& target_hash,
+        unsigned int flags,
+        ScriptError* serror) const override
     {
-        return m_checker.CheckUnvaultTriggerOutputs(execdata, expected_trigger_out_witprogram, spend_delay);
+        return m_checker.CheckUnvaultTriggerOutputs(
+            execdata, trigger_out_idx, recovery_params, spend_delay, target_hash, flags, serror);
     }
     bool CheckUnvaultTarget(const uint256& target_outputs_hash) const override
     {

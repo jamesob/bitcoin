@@ -131,13 +131,12 @@ class VaultsTest(BitcoinTestFramework):
         ]
 
         target_out_hash = target_outputs_hash(final_target_vout)
-        start_unvault_tx = get_trigger_unvault_tx(target_out_hash, [vault])
+        unvault_spec = UnvaultSpec([vault], target_out_hash)
+        start_unvault_tx = get_trigger_unvault_tx([unvault_spec])
 
         mutation_to_err = {
-            tx_mutator.unvault_with_bad_recovery_spk:
-            'OP_UNVAULT outputs not compatible',
-            tx_mutator.unvault_with_bad_spend_delay:
-            'OP_UNVAULT outputs not compatible',
+            tx_mutator.unvault_with_bad_recovery_spk: 'OP_UNVAULT outputs not compatible',
+            tx_mutator.unvault_with_bad_spend_delay: 'OP_UNVAULT outputs not compatible',
             tx_mutator.unvault_with_low_amount: 'OP_UNVAULT outputs not compatible',
             tx_mutator.unvault_with_high_amount: 'bad-txns-in-belowout',
             tx_mutator.unvault_with_bad_opcode: 'OP_UNVAULT outputs not compatible',
@@ -169,7 +168,7 @@ class VaultsTest(BitcoinTestFramework):
             return
 
         final_tx = get_final_withdrawal_tx(
-            unvault_outpoint, final_target_vout, start_unvault_tx)
+            unvault_outpoint, final_target_vout, unvault_spec)
 
         # Broadcasting before start_unvault is confirmed fails.
         self.assert_broadcast_tx(final_tx, err_msg="non-BIP68-final")
@@ -228,7 +227,8 @@ class VaultsTest(BitcoinTestFramework):
         assert_equal(node.getmempoolinfo()["size"], 0)
 
         # Start unvaulting the first vault.
-        unvault1_tx = get_trigger_unvault_tx(b'\x00' * 32, [vaults[0]])
+        first_unvault_spec = UnvaultSpec([vaults[0]], b'\x00' * 32)
+        unvault1_tx = get_trigger_unvault_tx([first_unvault_spec])
         unvault1_txid = unvault1_tx.rehash()
         assert_equal(
             node.sendrawtransaction(unvault1_tx.serialize().hex()), unvault1_txid,
@@ -328,19 +328,20 @@ class VaultsTest(BitcoinTestFramework):
         for incompat_vaults in [[vault_diff_recovery],
                                 [vault_diff_delay],
                                 [vault_diff_recovery, vault_diff_delay]]:
-            failed_unvault = get_trigger_unvault_tx(
-                target_out_hash, vaults + incompat_vaults)
+            spec = UnvaultSpec(vaults + incompat_vaults, target_out_hash)
+            failed_unvault = get_trigger_unvault_tx([spec])
             self.assert_broadcast_tx(
                 failed_unvault, err_msg="OP_UNVAULT outputs not compatible")
 
-        good_batch_unvault = get_trigger_unvault_tx(target_out_hash, vaults)
+        unvault_spec = UnvaultSpec(vaults, target_out_hash)
+        good_batch_unvault = get_trigger_unvault_tx([unvault_spec])
         good_txid = self.assert_broadcast_tx(good_batch_unvault, mine_all=True)
 
         unvault_outpoint = COutPoint(
             hash=int.from_bytes(bytes.fromhex(good_txid), byteorder="big"), n=0
         )
         final_tx = get_final_withdrawal_tx(
-            unvault_outpoint, final_target_vout, good_batch_unvault)
+            unvault_outpoint, final_target_vout, unvault_spec)
 
         self.assert_broadcast_tx(final_tx, err_msg="non-BIP68-final")
 
@@ -392,8 +393,8 @@ class VaultsTest(BitcoinTestFramework):
         ]
         target_out_hash = target_outputs_hash(final_target_vout)
 
-        unvault_tx = get_trigger_unvault_tx(
-            target_out_hash, vaults, revault_amount_sats=revault_amount)
+        unvault_spec = UnvaultSpec(vaults, target_out_hash, revault_amount_sats=revault_amount)
+        unvault_tx = get_trigger_unvault_tx([unvault_spec])
 
         tx_mutator = TxMutator(vaults[0])
         mutation_to_err = {
@@ -401,20 +402,19 @@ class VaultsTest(BitcoinTestFramework):
             tx_mutator.revault_with_low_amount: 'vault-insufficient-trigger-value',
         }
         for mutation, err in mutation_to_err.items():
-            unvault_tx = get_trigger_unvault_tx(
-                target_out_hash, vaults, revault_amount_sats=revault_amount,
-                presig_tx_mutator=mutation)
+            self.log.info(f"  bad tx: {mutation.__name__}")
+            spec = copy.deepcopy(unvault_spec)
+            unvault_tx = get_trigger_unvault_tx([spec], presig_tx_mutator=mutation)
             txid = self.assert_broadcast_tx(unvault_tx, err_msg=err)
 
-        unvault_tx = get_trigger_unvault_tx(
-            target_out_hash, vaults, revault_amount_sats=revault_amount)
+        unvault_tx = get_trigger_unvault_tx([unvault_spec])
         txid = self.assert_broadcast_tx(unvault_tx, mine_all=True)
 
         unvault_outpoint = COutPoint(
             hash=int.from_bytes(bytes.fromhex(txid), byteorder="big"), n=0)
 
         final_tx = get_final_withdrawal_tx(
-            unvault_outpoint, final_target_vout, unvault_tx)
+            unvault_outpoint, final_target_vout, unvault_spec)
 
         self.assert_broadcast_tx(final_tx, err_msg="non-BIP68-final")
 
@@ -424,7 +424,8 @@ class VaultsTest(BitcoinTestFramework):
         revault_spec.vault_outpoint = COutPoint(
             hash=int.from_bytes(bytes.fromhex(txid), byteorder="big"), n=1)
 
-        revault_unvault_tx = get_trigger_unvault_tx(b'\x00' * 32, [revault_spec])
+        revault_unvault_spec = UnvaultSpec([revault_spec], b'\x00' * 32)
+        revault_unvault_tx = get_trigger_unvault_tx([revault_unvault_spec])
         # The revault output should be immediately spendable into an OP_UNVAULT
         # output.
         self.assert_broadcast_tx(revault_unvault_tx, mine_all=True)
@@ -774,10 +775,12 @@ class UnvaultTriggerTransaction(CTransaction):
         super().__init__(*args, **kwargs)
 
         # These are set after the transaction has been fully generated.
-        self.spend_delay: t.Optional[int] = None
+        self.unvault_specs: t.List[UnvaultSpec] = []
 
-        # Cache the necessary witness stack for later spending.
-        self.spend_witness_stack: t.Optional[list] = None
+    @property
+    def max_spend_delay(self) -> int:
+        assert self.unvault_specs
+        return max(spec.spend_delay for spec in self.unvault_specs)
 
 
 def get_sweep_to_recovery_tx(
@@ -858,8 +861,13 @@ def get_sweep_to_recovery_tx(
             ])
         # Otherwise, we're sweeping away from an OP_UNVAULT trigger transaction.
         elif unvault_trigger_tx:
-            assert unvault_trigger_tx.spend_witness_stack
-            scriptwit.stack.extend(unvault_trigger_tx.spend_witness_stack)
+            spend_wit_stack = None
+            for spec in unvault_trigger_tx.unvault_specs:
+                if vault in spec.compat_vaults:
+                    spend_wit_stack = spec.spend_witness_stack
+
+            assert spend_wit_stack is not None
+            scriptwit.stack.extend(spend_wit_stack)
         else:
             raise ValueError(
                 "must pass `unvault_trigger_tx` if spending from unvault")
@@ -876,10 +884,66 @@ UNVAULT_NUMS_INTERNAL_PUBKEY = bytes.fromhex(
     "50929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0")
 
 
+class UnvaultSpec:
+    """
+    Gathers parameters for an unvault operation across potentially
+    many vaults with compatible unvault paramters (i.e. shared recovery and delay).
+    """
+    def __init__(
+        self,
+        compat_vaults: t.List[VaultSpec],
+        target_hash: bytes,
+        revault_amount_sats: t.Optional[int] = None,
+    ) -> None:
+        self.compat_vaults = compat_vaults
+        self.target_hash = target_hash
+        self.revault_amount_sats = revault_amount_sats
+        self.spend_delay = self.compat_vaults[0].spend_delay
+
+        self.unvault_spk = CScript([
+            # <recovery-params>
+            self.compat_vaults[0].recovery_params,
+            # <spend-delay>
+            self.spend_delay,
+            # <target-outputs-hash>
+            self.target_hash,
+            OP_UNVAULT,
+        ])
+
+        self.nums_tr = script.taproot_construct(
+            UNVAULT_NUMS_INTERNAL_PUBKEY,
+            scripts=[('only-path', self.unvault_spk, 0xC0)])
+
+        self.trigger_spk = self.nums_tr.scriptPubKey
+
+        self.amount = sum(v.total_amount_sats for v in self.compat_vaults)  # type: ignore
+
+        if self.revault_amount_sats:
+            self.amount -= self.revault_amount_sats
+
+        self.trigger_txout = CTxOut(nValue=self.amount, scriptPubKey=self.trigger_spk)
+
+        self.revault_txout = None
+        if self.revault_amount_sats:
+            vault_output = self.compat_vaults[0].vault_output
+            assert vault_output
+
+            self.revault_txout = CTxOut(
+                nValue=self.revault_amount_sats,
+                scriptPubKey=vault_output.scriptPubKey)
+
+        # Cache the taproot info for later use when constructing a spend.
+        self.spend_witness_stack = [
+            self.unvault_spk,
+            (bytes([0xC0 + self.nums_tr.negflag]) + self.nums_tr.internal_pubkey),
+        ]
+
+        self.vault_outpoints = [v.vault_outpoint for v in self.compat_vaults]
+        self.vault_outputs = [v.vault_output for v in self.compat_vaults]
+
+
 def get_trigger_unvault_tx(
-    target_hash: bytes,
-    vaults: t.List[VaultSpec],
-    revault_amount_sats: t.Optional[int] = None,
+    unvault_trigger_specs: t.List[UnvaultSpec],
     fee_utxo: t.Optional[t.Tuple[dict, CTxIn]] = None,
     presig_tx_mutator: t.Optional[t.Callable] = None,
     postsig_tx_mutator: t.Optional[t.Callable] = None,
@@ -892,53 +956,32 @@ def get_trigger_unvault_tx(
         revault_amount_sats (int): if given, "peel off" this amount from the
             total vault value to be revaulted.
     """
-    # Okay to take from the first because we want to error if the vaults don't share
-    # a spend delay.
-    spend_delay = vaults[0].spend_delay
-
-    unvault_spk = CScript([
-        # <recovery-params>
-        vaults[0].recovery_params,
-        # <spend-delay>
-        spend_delay,
-        # <target-outputs-hash>
-        target_hash,
-        OP_UNVAULT,
-    ])
-
     trigger_tx = UnvaultTriggerTransaction()
-    trigger_tx.spend_delay = spend_delay
-
-    total_vaults_amount_sats = sum(v.total_amount_sats for v in vaults)  # type: ignore
-    revault_output = None
-
-    if revault_amount_sats:
-        total_vaults_amount_sats -= revault_amount_sats
-        vault_output = vaults[0].vault_output
-        assert vault_output
-        revault_output = CTxOut(
-            nValue=revault_amount_sats, scriptPubKey=vault_output.scriptPubKey)
-
-    unvault_txout = CTxOut(nValue=total_vaults_amount_sats, scriptPubKey=unvault_spk)
-
-    nums_tr = script.taproot_construct(
-        UNVAULT_NUMS_INTERNAL_PUBKEY, scripts=[('only-path', unvault_spk, 0xC0)])
-
-    unvault_txout.scriptPubKey = nums_tr.scriptPubKey
-    # Cache the taproot info for later use when constructing a spend.
-    trigger_tx.spend_witness_stack = [
-        unvault_spk,
-        (bytes([0xC0 + nums_tr.negflag]) + nums_tr.internal_pubkey),
-    ]
-
+    trigger_tx.unvault_specs = unvault_trigger_specs
     trigger_tx.nVersion = 2
-    trigger_tx.vin = [CTxIn(outpoint=v.vault_outpoint) for v in vaults]
-    trigger_tx.vout = [unvault_txout]
+    trigger_tx.vin = []
+    trigger_tx.vout = []
+    vault_outputs = []
+    vaults_to_spec = {}
+    vout_idx = 0
+    spec_to_vout_idx = {}
 
-    if revault_output:
-        trigger_tx.vout.append(revault_output)
+    for spec in unvault_trigger_specs:
+        for vault in spec.compat_vaults:
+            vaults_to_spec[vault] = spec
 
-    vault_outputs = [v.vault_output for v in vaults]
+        trigger_tx.vin.extend(
+            CTxIn(outpoint=outpoint) for outpoint in spec.vault_outpoints)
+        trigger_tx.vout.append(spec.trigger_txout)
+
+        spec_to_vout_idx[spec] = vout_idx
+        vout_idx += 1
+
+        if spec.revault_txout:
+            trigger_tx.vout.append(spec.revault_txout)
+            vout_idx += 1
+
+        vault_outputs.extend(spec.vault_outputs)
 
     if fee_utxo:
         FEE_IN_SATS = 10_000
@@ -948,11 +991,14 @@ def get_trigger_unvault_tx(
             scriptPubKey=CScript([script.OP_TRUE]),
         ))
 
+        for k in spec_to_vout_idx:
+            spec_to_vout_idx[k] += 1
+
     if presig_tx_mutator:
         presig_tx_mutator(trigger_tx)
 
     # Sign the input for each vault and attach a fitting witness.
-    for i, vault in enumerate(vaults):
+    for i, (vault, spec) in enumerate(vaults_to_spec.items()):
         unvault_sigmsg = script.TaprootSignatureHash(
             trigger_tx, vault_outputs, input_index=i, hash_type=0
         )
@@ -961,11 +1007,14 @@ def get_trigger_unvault_tx(
         unvault_signature = key.sign_schnorr(
             vault.unvault_tweaked_privkey, unvault_sigmsg)
 
+        vout_idx = spec_to_vout_idx[spec]
+
         trigger_tx.wit.vtxinwit += [messages.CTxInWitness()]
         trigger_tx.wit.vtxinwit[i].scriptWitness.stack = [
             unvault_signature,
             vault.unvault_tr_info.scriptPubKey,
-            target_hash,
+            spec.target_hash,
+            CScript([vout_idx]) if vout_idx != 0 else b'',
             vault.vault_spk,
             (bytes([0xC0 + vault.init_tr_info.negflag])
              + vault.init_tr_info.internal_pubkey),
@@ -980,22 +1029,20 @@ def get_trigger_unvault_tx(
 def get_final_withdrawal_tx(
     unvault_outpoint: COutPoint,
     final_target_vout: t.List[CTxOut],
-    unvault_trigger_tx: UnvaultTriggerTransaction,
+    unvault_spec: UnvaultSpec,
 ) -> CTransaction:
     """
     Return the final transaction, withdrawing a balance to the specified target.
     """
-    assert unvault_trigger_tx.spend_delay is not None
-
     final_tx = CTransaction()
     final_tx.nVersion = 2
     final_tx.vin = [
-        CTxIn(outpoint=unvault_outpoint, nSequence=unvault_trigger_tx.spend_delay)
+        CTxIn(outpoint=unvault_outpoint, nSequence=unvault_spec.spend_delay)
     ]
     final_tx.vout = final_target_vout
     final_tx.wit.vtxinwit += [messages.CTxInWitness()]
     final_tx.wit.vtxinwit[0].scriptWitness.stack = (
-        unvault_trigger_tx.spend_witness_stack)
+        unvault_spec.spend_witness_stack)
 
     return final_tx
 
