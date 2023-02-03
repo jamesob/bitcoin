@@ -101,7 +101,9 @@ static constexpr unsigned int STANDARD_SCRIPT_VERIFY_FLAGS{MANDATORY_SCRIPT_VERI
                                                              SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_CHECK_TEMPLATE_VERIFY_HASH |
                                                              SCRIPT_VERIFY_DEFAULT_CHECK_TEMPLATE_VERIFY_HASH |
                                                              SCRIPT_VERIFY_ANYPREVOUT |
-                                                             SCRIPT_VERIFY_VAULT};
+                                                             SCRIPT_VERIFY_VAULT |
+                                                             SCRIPT_VERIFY_VAULT_REPLACEABLE_RECOVERY |
+                                                             SCRIPT_VERIFY_VAULT_UNAUTH_RECOVERY_STRUCTURE};
 
 /** For convenience, standard but not mandatory verify flags. */
 static constexpr unsigned int STANDARD_NOT_MANDATORY_VERIFY_FLAGS{STANDARD_SCRIPT_VERIFY_FLAGS & ~MANDATORY_SCRIPT_VERIFY_FLAGS};

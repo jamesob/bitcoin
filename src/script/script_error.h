@@ -84,7 +84,23 @@ typedef enum ScriptError_t
     SCRIPT_ERR_OP_CODESEPARATOR,
     SCRIPT_ERR_SIG_FINDANDDELETE,
 
-    SCRIPT_ERR_ERROR_COUNT
+    /* Vaults */
+    SCRIPT_ERR_UNVAULT_MISMATCH,
+    SCRIPT_ERR_UNVAULT_INCOMPAT_OUTPUT_TYPE,
+    SCRIPT_ERR_VAULT_BAD_REVAULT,
+    SCRIPT_ERR_VAULT_INVALID_DELAY,
+    SCRIPT_ERR_VAULT_LOW_RECOVERY_AMOUNT,
+    SCRIPT_ERR_VAULT_BAD_VOUT_IDX,
+    SCRIPT_ERR_VAULT_BAD_RECOVERY_OUTPUTS,
+    SCRIPT_ERR_UNVAULT_TARGET_HASH,
+    SCRIPT_ERR_VAULT_RECOVERY_NOT_REPLACEABLE,
+    // TODO: currently unused, but should be surfaced somehow to
+    // make clear that recovery auth has failed (without losing details) about the sig
+    // check failure.
+
+    SCRIPT_ERR_ERROR_COUNT,
+
+    SCRIPT_ERR_RECURSION_TOO_DEEP
 } ScriptError;
 
 #define SCRIPT_ERR_LAST SCRIPT_ERR_ERROR_COUNT

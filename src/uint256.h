@@ -19,7 +19,7 @@
 template<unsigned int BITS>
 class base_blob
 {
-protected:
+public:
     static constexpr int WIDTH = BITS / 8;
     uint8_t m_data[WIDTH];
 public:

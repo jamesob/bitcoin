@@ -18,6 +18,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 // Maximum number of bytes pushable to the stack
@@ -207,6 +208,10 @@ enum opcodetype
     OP_CHECKSIGADD = 0xba,
 
     OP_INVALIDOPCODE = 0xff,
+
+    // vaults - OP_SUCCESS187 and OP_SUCCESS188
+    OP_VAULT = 0xbb,
+    OP_VAULT_RECOVER = 0xbc,
 };
 
 // Maximum value that an opcode can be
@@ -612,5 +617,7 @@ CScript BuildScript(Ts&&... inputs)
 
     return ret;
 }
+
+CScript PushAll(const std::vector<std::vector<unsigned char>>& values);
 
 #endif // BITCOIN_SCRIPT_SCRIPT_H
