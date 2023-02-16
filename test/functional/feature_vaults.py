@@ -351,6 +351,7 @@ class VaultsTest(BitcoinTestFramework):
 
         # Construct the final unvault target.
         unvault_total_sats = sum(v.total_amount_sats for v in vaults)  # type: ignore
+        assert unvault_total_sats is not None
         assert unvault_total_sats > 0
         target_key = key.ECKey(secret=(1).to_bytes(32, "big"))
 
@@ -416,8 +417,11 @@ class VaultsTest(BitcoinTestFramework):
 
         revault_amount = COIN
         # Construct the final unvault target; save a coin to peel off in the revault.
-        unvault_total_sats = sum(
-            v.total_amount_sats for v in vaults) - revault_amount  # type: ignore
+        unvault_total_sats = 0
+        for v in vaults:
+            assert v.total_amount_sats is not None
+            unvault_total_sats += v.total_amount_sats
+        unvault_total_sats -= revault_amount
         assert unvault_total_sats > 0
         target_key = key.ECKey(secret=(1).to_bytes(32, "big"))
 
@@ -1170,6 +1174,7 @@ class UnvaultSpec:
         self.trigger_spk = self.trigger_tr.scriptPubKey
 
         self.amount = sum(v.total_amount_sats for v in self.compat_vaults)  # type: ignore
+        assert self.amount is not None
 
         if BadTriggerAmountLow in self.bad_behavior:
             self.amount -= 1
