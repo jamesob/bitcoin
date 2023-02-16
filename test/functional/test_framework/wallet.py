@@ -145,20 +145,28 @@ class MiniWallet:
                 self._utxos.append(self._create_utxo(txid=tx["txid"], vout=out["n"], value=out["value"], height=0))
 
     def sign_tx(self, tx, fixed_length=True):
-        """Sign tx that has been created by MiniWallet in P2PK mode"""
-        assert_equal(self._mode, MiniWalletMode.RAW_P2PK)
-        (sighash, err) = LegacySignatureHash(CScript(self._scriptPubKey), tx, 0, SIGHASH_ALL)
-        assert err is None
-        # for exact fee calculation, create only signatures with fixed size by default (>49.89% probability):
-        # 65 bytes: high-R val (33 bytes) + low-S val (32 bytes)
-        # with the DER header/skeleton data of 6 bytes added, this leads to a target size of 71 bytes
-        der_sig = b''
-        while not len(der_sig) == 71:
-            der_sig = self._priv_key.sign_ecdsa(sighash)
-            if not fixed_length:
-                break
-        tx.vin[0].scriptSig = CScript([der_sig + bytes(bytearray([SIGHASH_ALL]))])
-        tx.rehash()
+        if self._mode == MiniWalletMode.RAW_P2PK:
+            (sighash, err) = LegacySignatureHash(CScript(self._scriptPubKey), tx, 0, SIGHASH_ALL)
+            assert err is None
+            # for exact fee calculation, create only signatures with fixed size by default (>49.89% probability):
+            # 65 bytes: high-R val (33 bytes) + low-S val (32 bytes)
+            # with the DER header/skeleton data of 6 bytes added, this leads to a target size of 71 bytes
+            der_sig = b''
+            while not len(der_sig) == 71:
+                der_sig = self._priv_key.sign_ecdsa(sighash)
+                if not fixed_length:
+                    break
+            tx.vin[0].scriptSig = CScript([der_sig + bytes(bytearray([SIGHASH_ALL]))])
+            tx.rehash()
+        elif self._mode == MiniWalletMode.RAW_OP_2:
+            for i in tx.vin:
+                i.scriptSig = CScript([OP_NOP] * 43)  # pad to identical size
+        elif self._mode == MiniWalletMode.ADDRESS_OP_TRUE:
+            tx.wit.vtxinwit = [CTxInWitness()] * len(tx.vin)
+            for i in tx.wit.vtxinwit:
+                i.scriptWitness.stack = [CScript([OP_TRUE]), bytes([LEAF_VERSION_TAPSCRIPT]) + self._internal_key]
+        else:
+            assert False
 
     def generate(self, num_blocks, **kwargs):
         """Generate blocks with coinbase outputs to the internal address, and call rescan_utxos"""
@@ -255,6 +263,7 @@ class MiniWallet:
         utxos_to_spend: Optional[List[dict]] = None,
         num_outputs=1,
         amount_per_output=0,
+        locktime=0,
         sequence=0,
         fee_per_output=1000,
         target_weight=0
@@ -267,27 +276,22 @@ class MiniWallet:
         utxos_to_spend = utxos_to_spend or [self.get_utxo()]
         sequence = [sequence] * len(utxos_to_spend) if type(sequence) is int else sequence
         assert_equal(len(utxos_to_spend), len(sequence))
-        # create simple tx template (1 input, 1 output)
-        tx = self.create_self_transfer(
-            fee_rate=0,
-            utxo_to_spend=utxos_to_spend[0])["tx"]
 
-        # duplicate inputs, witnesses and outputs
-        tx.vin = [deepcopy(tx.vin[0]) for _ in range(len(utxos_to_spend))]
-        for txin, seq in zip(tx.vin, sequence):
-            txin.nSequence = seq
-        tx.wit.vtxinwit = [deepcopy(tx.wit.vtxinwit[0]) for _ in range(len(utxos_to_spend))]
-        tx.vout = [deepcopy(tx.vout[0]) for _ in range(num_outputs)]
-
-        # adapt input prevouts
-        for i, utxo in enumerate(utxos_to_spend):
-            tx.vin[i] = CTxIn(COutPoint(int(utxo['txid'], 16), utxo['vout']))
-
-        # adapt output amounts (use fixed fee per output)
+        # calculate output amount
         inputs_value_total = sum([int(COIN * utxo['value']) for utxo in utxos_to_spend])
         outputs_value_total = inputs_value_total - fee_per_output * num_outputs
-        for o in tx.vout:
-            o.nValue = amount_per_output or (outputs_value_total // num_outputs)
+        amount_per_output = amount_per_output or (outputs_value_total // num_outputs)
+        assert amount_per_output > 0
+        outputs_value_total = amount_per_output * num_outputs
+        fee = Decimal(inputs_value_total - outputs_value_total) / COIN
+
+        # create tx
+        tx = CTransaction()
+        tx.vin = [CTxIn(COutPoint(int(utxo_to_spend['txid'], 16), utxo_to_spend['vout']), nSequence=seq) for utxo_to_spend, seq in zip(utxos_to_spend, sequence)]
+        tx.vout = [CTxOut(amount_per_output, bytearray(self._scriptPubKey)) for _ in range(num_outputs)]
+        tx.nLockTime = locktime
+
+        self.sign_tx(tx)
 
         if target_weight:
             self._bulk_tx(tx, target_weight)
@@ -300,7 +304,9 @@ class MiniWallet:
                 value=Decimal(tx.vout[i].nValue) / COIN,
                 height=0,
             ) for i in range(len(tx.vout))],
+            "fee": fee,
             "txid": txid,
+            "wtxid": tx.getwtxid(),
             "hex": tx.serialize().hex(),
             "tx": tx,
         }
