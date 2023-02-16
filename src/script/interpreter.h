@@ -169,7 +169,7 @@ enum : uint32_t {
     SCRIPT_VERIFY_VAULT = (1U << 26),
 
     // Policy: vault recovery transactions should be marked replaceable.
-    SCRIPT_VERIFY_VAULT_REPLACEABLE_RECOVERY = (1U << 22),
+    SCRIPT_VERIFY_VAULT_REPLACEABLE_RECOVERY = (1U << 27),
 
     // Policy: unauthorized vault recovery transactions have limited outputs.
     SCRIPT_VERIFY_VAULT_UNAUTH_RECOVERY_STRUCTURE = (1U << 28),
