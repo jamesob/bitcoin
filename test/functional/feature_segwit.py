@@ -458,7 +458,7 @@ class SegWitTest(BitcoinTestFramework):
             p2wshop2 = script_to_p2wsh_script(op2)
             unsolvable_after_importaddress.append(unsolvablep2pkh)
             unsolvable_after_importaddress.append(unsolvablep2wshp2pkh)
-            unsolvable_after_importaddress.append(op2)  # OP_1 will be imported as script
+            unsolvable_after_importaddress.append(op2)  # OP_2 will be imported as script
             unsolvable_after_importaddress.append(p2wshop2)
             unseen_anytime.append(op0)  # OP_0 will be imported as P2SH address with no script provided
             unsolvable_after_importaddress.append(p2shop0)

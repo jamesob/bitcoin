@@ -805,7 +805,7 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
     }
 
     // We check for 0-base-fee transaction here now that we have access to ws.m_base_fees.
-    if (HasEphemeralAnchor(tx) && ws.m_base_fees != 0) {
+    if (HasPayToAnchor(tx) && ws.m_base_fees != 0) {
         return state.Invalid(TxValidationResult::TX_NOT_STANDARD, "invalid-ephemeral-fee");
     }
 

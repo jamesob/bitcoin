@@ -325,7 +325,7 @@ bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs,
     return true;
 }
 
-size_t HasEphemeralAnchor(const CTransaction& tx)
+size_t HasPayToAnchor(const CTransaction& tx)
 {
     for (const CTxOut& txout : tx.vout) {
         if (txout.scriptPubKey.IsPayToAnchor()) {

@@ -143,7 +143,7 @@ bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs,
 /**
 * Check if given transaction has a IsPayToAnchor output.
 **/
-size_t HasEphemeralAnchor(const CTransaction& tx);
+size_t HasPayToAnchor(const CTransaction& tx);
 
 /** Compute the virtual transaction size (weight reinterpreted as bytes). */
 int64_t GetVirtualTransactionSize(int64_t nWeight, int64_t nSigOpCost, unsigned int bytes_per_sigop);

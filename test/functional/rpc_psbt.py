@@ -879,7 +879,7 @@ class PSBTTest(BitcoinTestFramework):
         funded_decoded = self.nodes[0].decodepsbt(funded_anchor["psbt"])["tx"]
         anchor_idx = 0 if funded_decoded["vout"][0]["scriptPubKey"]["hex"] == "51" else 1
         assert_equal(funded_decoded["vout"][anchor_idx]["scriptPubKey"]["hex"], "51")
-        assert_equal(funded_decoded["vout"][anchor_idx]["scriptPubKey"]["type"], "true")
+        assert_equal(funded_decoded["vout"][anchor_idx]["scriptPubKey"]["type"], "anchor")
         assert_equal(funded_decoded["vout"][anchor_idx]["value"], Decimal("0.00000001"))
 
         anchor_tx = self.nodes[0].finalizepsbt(self.nodes[0].walletprocesspsbt(psbt=funded_anchor["psbt"])["psbt"])["hex"]

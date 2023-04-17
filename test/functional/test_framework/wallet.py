@@ -75,7 +75,7 @@ class MiniWalletMode(Enum):
          mode       |    description    |  address  | standard | scriptSig  | signing
     ----------------+-------------------+-----------+----------+------------+----------
     ADDRESS_OP_TRUE | anyone-can-spend  |  bech32m  |   yes    |    no      |   no
-    RAW_OP_2     | anyone-can-spend  |  - (raw)  |   no     |    yes     |   no
+    RAW_OP_2        | anyone-can-spend  |  - (raw)  |   no     |    yes     |   no
     RAW_P2PK        | pay-to-public-key |  - (raw)  |   yes    |    yes     |   yes
     """
     ADDRESS_OP_TRUE = 1
