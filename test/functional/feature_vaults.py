@@ -9,10 +9,11 @@ See the `VaultSpec` class and nearby functions for a general sense of the
 transactional structure of vaults.
 """
 
-# FIXME add test for differing trigger witness version.
-# FIXME add test with multiple sequential OP_VAULT usages in same leaf.
-# FIXME add test for multiple OP_VAULT leaves.
-# FIXME add test for multiple unrelated leaves.
+# FIXME add test for differing trigger witness version
+# FIXME add test with multiple sequential OP_VAULT usages in same leaf
+# FIXME add test for multiple OP_VAULT leaves
+# FIXME add test for multiple unrelated leaves
+# FIXME add test for adding to trigger value
 
 import copy
 import typing as t
@@ -738,6 +739,12 @@ class VaultsTest(BitcoinTestFramework):
                    BadRecoveryAmountHigh,
                    BadRecoveryVoutIdx,
                    BadRecoveryVoutIdxNoExist]:
+
+            if bb == BadRecoveryAmountHigh and recov_kwargs.get('fee_wallet'):
+                # If we're using an additional fee input, recovery output is allowed
+                # to take from that amount, so this isn't bad behavior.
+                continue
+
             bad_tx = get_recovery_tx(*recov_params, bad_behavior={bb}, **recov_kwargs)
             self.log.info("  bad recovery tx: %s", bb.desc)
             try_also = None
