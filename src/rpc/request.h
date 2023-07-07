@@ -17,7 +17,7 @@ enum class JSONVersion {
 };
 
 UniValue JSONRPCRequestObj(const std::string& strMethod, const UniValue& params, const UniValue& id);
-UniValue JSONRPCReplyObj(UniValue result, UniValue error, UniValue id);
+UniValue JSONRPCReplyObj(UniValue result, UniValue error, UniValue id, JSONVersion json_version);
 UniValue JSONRPCError(int code, const std::string& message);
 
 /** Generate a new RPC authentication cookie and write it to disk */
