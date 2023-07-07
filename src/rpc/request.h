@@ -11,6 +11,11 @@
 
 #include <univalue.h>
 
+enum class JSONVersion {
+    JSON_1_BTC,
+    JSON_2_0
+};
+
 UniValue JSONRPCRequestObj(const std::string& strMethod, const UniValue& params, const UniValue& id);
 UniValue JSONRPCReplyObj(UniValue result, UniValue error, UniValue id);
 UniValue JSONRPCError(int code, const std::string& message);
@@ -35,6 +40,7 @@ public:
     std::string authUser;
     std::string peerAddr;
     std::any context;
+    JSONVersion m_json_version = JSONVersion::JSON_1_BTC;
 
     void parse(const UniValue& valRequest);
 };
