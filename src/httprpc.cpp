@@ -75,6 +75,9 @@ static bool g_rpc_whitelist_default = false;
 
 static void JSONErrorReply(HTTPRequest* req, UniValue objError, const JSONRPCRequest& jreq)
 {
+    // Sending HTTP errors is a legacy JSON-RPC behavior.
+    Assume(jreq.m_json_version != JSONVersion::JSON_2_0);
+
     // Send error reply from json-rpc error object
     int nStatus = HTTP_INTERNAL_SERVER_ERROR;
     int code = objError.find_value("code").getInt<int>();
@@ -226,7 +229,8 @@ static bool HTTPReq_JSONRPC(const std::any& context, HTTPRequest* req)
             // Execute each request
             reply = UniValue::VARR;
             for (size_t i{0}; i < valRequest.size(); ++i) {
-                // Batches include errors in the batch response, they do not throw
+                // Batches never throw HTTP errors, they are always just included
+                // in "HTTP OK" responses.
                 try {
                     jreq.parse(valRequest[i]);
                     reply.push_back(JSONRPCExec(jreq));
