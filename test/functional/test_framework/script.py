@@ -944,7 +944,7 @@ op_success_overrides = {
 }
 
 
-def pprint_tx(tx: CTransaction) -> None:
+def pprint_tx(tx: CTransaction, should_print: bool = True) -> str:
     s = f"CTransaction: (nVersion={tx.nVersion})\n"
     s += "  vin:\n"
     for i, inp in enumerate(tx.vin):
@@ -967,4 +967,7 @@ def pprint_tx(tx: CTransaction) -> None:
             s += f"      - [{i}.{j}] {scriptstr}\n"
 
     s += f"  nLockTime: {tx.nLockTime}\n"
-    print(s)
+
+    if should_print:
+        print(s)
+    return s
