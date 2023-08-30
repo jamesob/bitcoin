@@ -143,6 +143,7 @@ public:
         consensus.nMinerConfirmationWindow = 2016; // nPowTargetTimespan / nPowTargetSpacing
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY] = SetupDeployment{.activate = 0x30000000, .abandon = 0, .never = true};
         consensus.vDeployments[Consensus::DEPLOYMENT_CHECKTEMPLATEVERIFY] = SetupDeployment{.activate = 0x60007700, .abandon = 0x40007700, .never = true};
+        consensus.vDeployments[Consensus::DEPLOYMENT_ANYPREVOUT] = SetupDeployment{.activate = 0x60007600, .abandon = 0x40007600, .never = true};
 
         consensus.nMinimumChainWork = uint256{"000000000000000000000000000000000000000088e186b70e0862c193ec44d6"};
         consensus.defaultAssumeValid = uint256{"000000000000000000011c5890365bdbe5d25b97ce0057589acaef4f1a57263f"}; // 856760
@@ -260,6 +261,7 @@ public:
         consensus.nMinerConfirmationWindow = 2016; // nPowTargetTimespan / nPowTargetSpacing
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY] = SetupDeployment{.activate = 0x30000000, .abandon = 0, .never = true};
         consensus.vDeployments[Consensus::DEPLOYMENT_CHECKTEMPLATEVERIFY] = SetupDeployment{.activate = 0x60007700, .abandon = 0x40007700, .never = true};
+        consensus.vDeployments[Consensus::DEPLOYMENT_ANYPREVOUT] = SetupDeployment{.activate = 0x60007600, .abandon = 0x40007600, .never = true};
 
         consensus.nMinimumChainWork = uint256{"000000000000000000000000000000000000000000000f209695166be8b61fa9"};
         consensus.defaultAssumeValid = uint256{"000000000000000465b1a66c9f386308e8c75acef9201f3f577811da09fc90ad"}; // 2873500
@@ -489,6 +491,12 @@ public:
             .activate = 0x60007700,
             .abandon = 0x40007700,
         };
+        consensus.vDeployments[Consensus::DEPLOYMENT_ANYPREVOUT] = SetupDeployment{
+            .start = 1625875200, // 2021-07-10
+            .timeout = 1941408000, // 2031-07-10
+            .activate = 0x60007600,
+            .abandon = 0x40007600,
+        };
 
         RenounceDeployments(options.renounce, consensus.vDeployments);
 
@@ -563,6 +571,7 @@ public:
         // 0x3000_0000 = bit 28 plus versionbits signalling; 0x5000_0000 = bit 38 plus VERSIONBITS_TOP_ABANDON
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY] = SetupDeployment{.start = 0, .timeout = Consensus::HereticalDeployment::NO_TIMEOUT, .activate = 0x30000000, .abandon = 0x50000000};
         consensus.vDeployments[Consensus::DEPLOYMENT_CHECKTEMPLATEVERIFY] = SetupDeployment{.activate = 0x60007700, .abandon = 0x40007700, .always = true};
+        consensus.vDeployments[Consensus::DEPLOYMENT_ANYPREVOUT] = SetupDeployment{.activate = 0x60007600, .abandon = 0x40007600, .always = true};
 
         consensus.nMinimumChainWork = uint256{};
         consensus.defaultAssumeValid = uint256{};
