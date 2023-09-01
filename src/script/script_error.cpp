@@ -137,6 +137,8 @@ std::string ScriptErrorString(const ScriptError serror)
             return "Too many recursive calls to script interpreter";
         case SCRIPT_ERR_VAULT_BAD_VOUT_IDX:
             return "Invalid vault vout index given";
+        case SCRIPT_ERR_VAULT_BAD_REVAULT_IDX:
+            return "Invalid revault vout index given";
         case SCRIPT_ERR_VAULT_RECOVERY_NOT_REPLACEABLE:
             return "Vault recovery inputs must be replaceable";
         case SCRIPT_ERR_UNKNOWN_ERROR:
