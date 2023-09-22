@@ -2169,6 +2169,14 @@ std::optional<ScriptError> GenericTransactionSignatureChecker<T>::CheckVaultTrig
 {
     assert(execdata.m_curr_witversion);
 
+    // Implement the sigops/witnesssize ratio test.
+    // Passing with an upgradable public key version is also counted.
+    assert(execdata.m_validation_weight_left_init);
+    execdata.m_validation_weight_left -= VALIDATION_WEIGHT_PER_TAPTWEAKCHECK;
+    if (execdata.m_validation_weight_left < 0) {
+        return SCRIPT_ERR_TAPSCRIPT_VALIDATION_WEIGHT;
+    }
+
     if (!this->txdata) {
         HandleMissingData(m_mdb);
         return SCRIPT_ERR_UNKNOWN_ERROR;
@@ -2209,7 +2217,7 @@ std::optional<ScriptError> GenericTransactionSignatureChecker<T>::CheckVaultTrig
         }
         const XOnlyPubKey val_pk{Span{val_sPK}.subspan(2)};
 
-        auto tapleaf_hash = ComputeTapleafHash(
+        const auto tapleaf_hash = ComputeTapleafHash(
             control[0] & TAPROOT_LEAF_MASK, flu_script);
         const uint256 merkle_root = ComputeTaprootMerkleRoot(control, tapleaf_hash);
         const auto expected_pk = (*execdata.m_internal_key).CreateTapTweak(&merkle_root);
