@@ -1025,6 +1025,17 @@ bool MemPoolAccept::PackageMempoolChecks(const std::vector<CTransactionRef>& txn
    return true;
 }
 
+static unsigned int DepDiscourageFlags(const CBlockIndex* tip, const ChainstateManager& chainman, const std::vector<std::pair<Consensus::DeploymentPos,unsigned int>>& depflags)
+{
+    unsigned int result = SCRIPT_VERIFY_NONE;
+    for (auto [dep, flags] : depflags) {
+        if (!DeploymentActiveAfter(tip, chainman, dep)) {
+            result |= flags;
+        }
+    }
+    return result;
+}
+
 bool MemPoolAccept::PolicyScriptChecks(const ATMPArgs& args, Workspace& ws)
 {
     AssertLockHeld(cs_main);
@@ -2226,6 +2237,11 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
         flags |= SCRIPT_VERIFY_CHECKTEMPLATEVERIFY;
         flags |= SCRIPT_VERIFY_ANYPREVOUT;
         flags |= SCRIPT_VERIFY_VAULT;
+    }
+
+    // Enforce OP_CAT
+    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_OP_CAT)) {
+        flags |= SCRIPT_VERIFY_OP_CAT;
     }
 
     // Enforce BIP147 NULLDUMMY (activated simultaneously with segwit)
