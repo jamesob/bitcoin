@@ -1044,6 +1044,17 @@ bool MemPoolAccept::PackageMempoolChecks(const std::vector<CTransactionRef>& txn
    return true;
 }
 
+static unsigned int DepDiscourageFlags(const CBlockIndex* tip, const ChainstateManager& chainman, const std::vector<std::pair<Consensus::DeploymentPos,unsigned int>>& depflags)
+{
+    unsigned int result = SCRIPT_VERIFY_NONE;
+    for (auto [dep, flags] : depflags) {
+        if (!DeploymentActiveAfter(tip, chainman, dep)) {
+            result |= flags;
+        }
+    }
+    return result;
+}
+
 bool MemPoolAccept::PolicyScriptChecks(const ATMPArgs& args, Workspace& ws)
 {
     AssertLockHeld(cs_main);
@@ -1051,11 +1062,12 @@ bool MemPoolAccept::PolicyScriptChecks(const ATMPArgs& args, Workspace& ws)
     const CTransaction& tx = *ws.m_ptx;
     TxValidationState& state = ws.m_state;
 
-    const bool ctv_active = DeploymentActiveAfter(m_active_chainstate.m_chain.Tip(), m_active_chainstate.m_chainman, Consensus::DEPLOYMENT_CHECKTEMPLATEVERIFY);
-    const bool apo_active = DeploymentActiveAfter(m_active_chainstate.m_chain.Tip(), m_active_chainstate.m_chainman, Consensus::DEPLOYMENT_ANYPREVOUT);
-    const unsigned int scriptVerifyFlags = STANDARD_SCRIPT_VERIFY_FLAGS
-        | (ctv_active ? SCRIPT_VERIFY_NONE : SCRIPT_VERIFY_DISCOURAGE_CHECK_TEMPLATE_VERIFY_HASH)
-        | (apo_active ? SCRIPT_VERIFY_NONE : SCRIPT_VERIFY_DISCOURAGE_ANYPREVOUT);
+    const unsigned int scriptVerifyFlags = STANDARD_SCRIPT_VERIFY_FLAGS |
+        DepDiscourageFlags(m_active_chainstate.m_chain.Tip(), m_active_chainstate.m_chainman, {
+             { Consensus::DEPLOYMENT_CHECKTEMPLATEVERIFY, SCRIPT_VERIFY_DISCOURAGE_CHECK_TEMPLATE_VERIFY_HASH },
+             { Consensus::DEPLOYMENT_ANYPREVOUT, SCRIPT_VERIFY_DISCOURAGE_ANYPREVOUT },
+             { Consensus::DEPLOYMENT_OP_CAT, SCRIPT_VERIFY_DISCOURAGE_OP_CAT },
+    });
 
     // Check input scripts and signatures.
     // This is done last to help prevent CPU exhaustion denial-of-service attacks.
@@ -2153,6 +2165,11 @@ unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Chainstat
     // Enforce ANYPREVOUT (BIP118)
     if ((flags & SCRIPT_VERIFY_TAPROOT) && DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_ANYPREVOUT)) {
         flags |= SCRIPT_VERIFY_ANYPREVOUT;
+    }
+
+    // Enforce OP_CAT
+    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_OP_CAT)) {
+        flags |= SCRIPT_VERIFY_OP_CAT;
     }
 
     return flags;
