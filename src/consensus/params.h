@@ -34,6 +34,7 @@ enum DeploymentPos : uint16_t {
     DEPLOYMENT_TAPROOT, // Deployment of Schnorr/Taproot (BIPs 340-342)
     DEPLOYMENT_COVTOOLS, // Deployment of CHECKTEMPLATEVERIFY, ANYPREVOUT, OP_VAULT (BIP xxx)
     DEPLOYMENT_OP_CAT,
+    DEPLOYMENT_LN_HANCE,
     // NOTE: Also add new deployments to VersionBitsDeploymentInfo in deploymentinfo.cpp
     MAX_VERSION_BITS_DEPLOYMENTS
 };

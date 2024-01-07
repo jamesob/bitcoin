@@ -2244,6 +2244,16 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
         flags |= SCRIPT_VERIFY_OP_CAT;
     }
 
+    // Enforce CHECKSIGFROMSTACK(VERIFY) (BIN-2024-0003)
+    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_CHECKSIGFROMSTACK)) {
+        flags |= SCRIPT_VERIFY_CHECKSIGFROMSTACK;
+    }
+
+    // Process INTERNALKEY (BIN-2024-0004)
+    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_INTERNALKEY)) {
+        flags |= SCRIPT_VERIFY_INTERNALKEY;
+    }
+
     // Enforce BIP147 NULLDUMMY (activated simultaneously with segwit)
     if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_SEGWIT)) {
         flags |= SCRIPT_VERIFY_NULLDUMMY;
