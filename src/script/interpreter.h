@@ -176,6 +176,12 @@ enum : uint32_t {
     SCRIPT_VERIFY_OP_CAT = (1U << 29),
     SCRIPT_VERIFY_DISCOURAGE_OP_CAT = (1U << 30),
 
+    // Executing OP_INTERNALKEY
+    SCRIPT_VERIFY_INTERNALKEY = (1U << 31),
+
+    // Making OP_INTERNALKEY non-standard
+    SCRIPT_VERIFY_DISCOURAGE_INTERNALKEY = (1U << 32),
+
     // Constants to point to the highest flag in use. Add new flags above this line.
     //
     SCRIPT_VERIFY_END_MARKER
