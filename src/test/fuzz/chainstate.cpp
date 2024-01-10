@@ -61,29 +61,41 @@ std::unordered_map<fs::path, std::vector<unsigned char>, std::hash<std::filesyst
 //! The initial block chain used to test the chainstate.
 std::vector<std::shared_ptr<CBlock>> g_initial_blockchain;
 
+FILE* mock_fopen(const fs::path& file_path, const char* mode)
+{
+    // Get the file from the map. If it's not there insert it unless it's a file we aren't interested in.
+    const auto [data, size]{[&]{
+        const auto it = g_files.find(file_path);
+        if (it != g_files.end()) return std::make_pair(it->second.data(), it->second.size());
+        const auto file_name{PathToString(file_path.filename())};
+        // We shouldn't need to store anything else than the blk and rev files.
+        if (file_name.find("blk") == std::string::npos && file_name.find("rev") == std::string::npos) {
+            std::make_pair(nullptr, 0);
+        }
+        // NOTE: we do a single large alloc of the max possible file size, as there is no sane way to
+        // create shorter files but re-allocate when needed.
+        std::vector<unsigned char> buf(node::MAX_BLOCKFILE_SIZE);
+        const auto [it2, _]{g_files.insert({file_path, std::move(buf)})};
+        return std::make_pair(it2->second.data(), it2->second.size());
+    }()};
+    if (!data) return (FILE*)nullptr;
+
+    // TODO: implement some fmemopen equivalent on Windows and macOS platforms.
+#if defined(MAC_OSX) || defined(WIN_32)
+    return (FILE*)nullptr;
+#else
+    return fmemopen(data, size, mode);
+#endif
+}
+
 void mock_filesystem_calls()
 {
     fs::g_mock_create_dirs = [](const fs::path&) { return true; };
     g_mock_check_disk_space = [](const fs::path&, uint64_t) { return true; };
-    fsbridge::g_mock_fopen = [&](const fs::path& file_path, const char* mode) {
-        // Get the file from the map. If it's not there insert it unless it's a file we aren't interested in.
-        const auto [data, size]{[&]{
-            const auto it = g_files.find(file_path);
-            if (it != g_files.end()) return std::make_pair(it->second.data(), it->second.size());
-            const auto file_name{PathToString(file_path.filename())};
-            // We shouldn't need to store anything else than the blk and rev files.
-            if (file_name.find("blk") == std::string::npos && file_name.find("rev") == std::string::npos) {
-                std::make_pair(nullptr, 0);
-            }
-            // NOTE: we do a single large alloc of the max possible file size, as there is no sane way to
-            // create shorter files but re-allocate when needed.
-            std::vector<unsigned char> buf(node::MAX_BLOCKFILE_SIZE);
-            const auto [it2, _]{g_files.insert({file_path, std::move(buf)})};
-            return std::make_pair(it2->second.data(), it2->second.size());
-        }()};
-        if (!data) return (FILE*)nullptr;
-        return fmemopen(data, size, mode);
-    };
+
+#if !(defined(MAC_OSX) || defined(WIN_32))
+    fsbridge::g_mock_fopen = mock_fopen;
+#endif
     fs::g_mock_remove = [&](const fs::path& file_path) {
         g_files.erase(file_path);
         return true;
