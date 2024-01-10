@@ -243,6 +243,16 @@ void rename(const std::filesystem::path& old_p, const std::filesystem::path& new
 
 } // namespace fs
 
+namespace std {
+    template<>
+    struct hash<fs::path>
+    {
+        std::size_t operator()(const fs::path& path) const noexcept {
+            return std::hash<std::filesystem::path>{}(static_cast<std::filesystem::path>(path));
+        }
+    };
+} // namespace std
+
 /** Bridge operations to C stdio */
 namespace fsbridge {
     using FopenFn = std::function<FILE*(const fs::path&, const char*)>;
