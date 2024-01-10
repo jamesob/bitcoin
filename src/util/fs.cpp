@@ -23,13 +23,13 @@
 
 namespace fs {
 
-std::function<bool(const std::filesystem::path&)> g_mock_create_dirs{nullptr};
+std::function<bool(const path&)> g_mock_create_dirs{nullptr};
 
 std::function<bool(const path&)> g_mock_exists{nullptr};
 
-std::function<bool(const std::filesystem::path&)> g_mock_remove{nullptr};
+std::function<bool(const path&)> g_mock_remove{nullptr};
 
-bool remove(const std::filesystem::path& p)
+bool remove(const path& p)
 {
     if (g_mock_remove) {
         return g_mock_remove(p);
@@ -37,9 +37,9 @@ bool remove(const std::filesystem::path& p)
     return std::filesystem::remove(p);
 }
 
-std::function<bool(const std::filesystem::path&, std::error_code&)> g_mock_remove_ec{nullptr};
+std::function<bool(const path&, std::error_code&)> g_mock_remove_ec{nullptr};
 
-bool remove(const std::filesystem::path& p, std::error_code& ec)
+bool remove(const path& p, std::error_code& ec)
 {
     if (g_mock_remove) {
         return g_mock_remove_ec(p, ec);
@@ -47,9 +47,9 @@ bool remove(const std::filesystem::path& p, std::error_code& ec)
     return std::filesystem::remove(p, ec);
 }
 
-std::function<void(const std::filesystem::path&, const std::filesystem::path&)> g_mock_rename{nullptr};
+std::function<void(const path&, const path&)> g_mock_rename{nullptr};
 
-void rename(const std::filesystem::path& old_p, const std::filesystem::path& new_p)
+void rename(const path& old_p, const path& new_p)
 {
     if (g_mock_rename) {
         return g_mock_rename(old_p, new_p);

@@ -125,5 +125,5 @@ FUZZ_TARGET(banman, .init = initialize_banman)
             }
         }
     }
-    fs::remove(fs::PathToString(banlist_file + ".json"));
+    fs::remove(banlist_file + ".json");
 }

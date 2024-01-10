@@ -3849,7 +3849,7 @@ bool CWallet::MigrateToSQLite(bilingual_str& error)
         if (!batch->Write(Span{key}, Span{value})) {
             batch->TxnAbort();
             m_database->Close();
-            fs::remove(m_database->Filename());
+            fs::remove(fs::PathFromString(m_database->Filename()));
             assert(false); // This is a critical error, the new db could not be written to. The original db exists as a backup, but we should not continue execution.
         }
     }

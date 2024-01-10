@@ -56,7 +56,7 @@ static const int MAX_HEADERS_RESULTS{2000};
 // to two different buffers.)
 // The use of a global does not prevent determinism (since the buffer from one run simply gets
 // overwritten in the next) but avoids a 128MB allocation per run. FIXME: is that really true?
-std::unordered_map<fs::path, std::vector<unsigned char>, std::hash<std::filesystem::path>> g_files;
+std::unordered_map<fs::path, std::vector<unsigned char>, std::hash<fs::path>> g_files;
 
 //! The initial block chain used to test the chainstate.
 std::vector<std::shared_ptr<CBlock>> g_initial_blockchain;
@@ -103,7 +103,7 @@ void mock_filesystem_calls()
     fs::g_mock_exists = [&](const fs::path& file_path) {
         return g_files.count(file_path) > 0;
     };
-    fs::g_mock_rename = [&](const std::filesystem::path& old_p, const std::filesystem::path& new_p) {
+    fs::g_mock_rename = [&](const fs::path& old_p, const fs::path& new_p) {
         g_files.extract(old_p).key() = new_p;
     };
     // Needs to be mocked because it may call `fileno(3)`, which returns an error for `fmemopen(3)`ed streams.
@@ -111,7 +111,7 @@ void mock_filesystem_calls()
         return fflush(f) == 0;
     };
     // Needs to be mocked because it may call `fileno(3)`, which returns an error for `fmemopen(3)`ed streams.
-    g_mock_dir_commit = [&](std::filesystem::path) {};
+    g_mock_dir_commit = [&](fs::path) {};
     // Needs to be mocked because it may call `fileno(3)`, which returns an error for `fmemopen(3)`ed streams.
     g_mock_truncate_file = [&](FILE*, unsigned int) {
         return true;

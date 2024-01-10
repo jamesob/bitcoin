@@ -187,7 +187,7 @@ static inline path PathFromString(const std::string& string)
 }
 
 //! Used to replace the implementation of the fs::create_directories function.
-extern std::function<bool(const std::filesystem::path&)> g_mock_create_dirs;
+extern std::function<bool(const path&)> g_mock_create_dirs;
 
 /**
  * Create directory (and if necessary its parents), unless the leaf directory
@@ -215,31 +215,31 @@ static inline bool create_directories(const std::filesystem::path& p)
 bool create_directories(const std::filesystem::path& p, std::error_code& ec) = delete;
 
 //! Used to replace the implementation of the fs::remove function.
-extern std::function<bool(const std::filesystem::path&)> g_mock_remove;
+extern std::function<bool(const path&)> g_mock_remove;
 
 /**
  * The file or empty directory identified by the path p is deleted as if by the POSIX remove.
  * Symlinks are not followed (symlink is removed, not its target).
  * (This is just a pass-through to std::fs::remove, which can be mocked with above g_mock_remove.
  */
-bool remove(const std::filesystem::path& p);
+bool remove(const path& p);
 
 //! Used to replace the implementation of the fs::remove function.
-extern std::function<bool(const std::filesystem::path&, std::error_code&)> g_mock_remove_ec;
+extern std::function<bool(const path&, std::error_code&)> g_mock_remove_ec;
 
 /**
  * The file or empty directory identified by the path p is deleted as if by the POSIX remove.
  * Symlinks are not followed (symlink is removed, not its target).
  * (This is just a pass-through to std::fs::remove, which can be mocked with above g_mock_remove.
  */
-bool remove(const std::filesystem::path& p, std::error_code& ec);
+bool remove(const path& p, std::error_code& ec);
 
-extern std::function<void(const std::filesystem::path&, const std::filesystem::path&)> g_mock_rename;
+extern std::function<void(const path&, const path&)> g_mock_rename;
 
 /**
  * A pass-through to std::fs::rename, which can be mocked using g_mock_rename.
  */
-void rename(const std::filesystem::path& old_p, const std::filesystem::path& new_p);
+void rename(const path& old_p, const path& new_p);
 
 } // namespace fs
 
