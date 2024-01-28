@@ -374,25 +374,6 @@ static bool EvalChecksigFromStack(const valtype& sig, const valtype& msg, const 
         XOnlyPubKey pubkey{pubkey_in};
 
         if (!pubkey.VerifySchnorr(msg, sig)) return set_error(serror, SCRIPT_ERR_SCHNORR_SIG);
-    } else if (pubkey_in.size() == 33 && (pubkey_in[0] == 0x02 || pubkey_in[0] == 0x03) && (sigversion == SigVersion::BASE || sigversion == SigVersion::WITNESS_V0)) {
-        // Pubkeys of length 33 are only constrained in legacy and segwitv0. In these script types only those beginning
-        // with 0x02 or 0x03 are constrained. Others are unknown pubkey types.
-        if (!success) return true;
-
-        // Add sighash flag to pass format validation
-        valtype vchSig{sig.begin(), sig.begin() + sig.size()};
-        vchSig.emplace_back(SIGHASH_ALL);
-        if (!CheckSignatureEncoding(vchSig, flags | SCRIPT_VERIFY_LOW_S, serror)) {
-            // serror is set
-            return false;
-        }
-
-        if (msg.size() != 32) return set_error(serror, SCRIPT_ERR_INVALID_DATA_LENGTH);
-
-        CPubKey pubkey(pubkey_in);
-        if (!pubkey.IsValid()) return set_error(serror, SCRIPT_ERR_PUBKEYTYPE);
-
-        if (!pubkey.Verify(uint256(msg), sig)) return set_error(serror, SCRIPT_ERR_SIG_NULLFAIL);
     } else {
         /*
          *  New public key version softforks should be defined before this `else` block.
