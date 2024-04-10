@@ -299,6 +299,7 @@ BASE_SCRIPTS = [
     'p2p_initial_headers_sync.py',
     'feature_nulldummy.py',
     'feature_checktemplateverify.py',
+    'feature_opcat.py',
     'mempool_accept.py',
     'mempool_expiry.py',
     'wallet_import_with_label.py --legacy-wallet',
