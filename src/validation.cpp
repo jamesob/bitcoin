@@ -2245,12 +2245,12 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
     }
 
     // Enforce CHECKSIGFROMSTACK(VERIFY) (BIN-2024-0003)
-    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_CHECKSIGFROMSTACK)) {
+    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_LN_HANCE)) {
         flags |= SCRIPT_VERIFY_CHECKSIGFROMSTACK;
     }
 
     // Process INTERNALKEY (BIN-2024-0004)
-    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_INTERNALKEY)) {
+    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_LN_HANCE)) {
         flags |= SCRIPT_VERIFY_INTERNALKEY;
     }
 

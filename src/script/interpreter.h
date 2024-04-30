@@ -180,13 +180,13 @@ enum : uint32_t {
     SCRIPT_VERIFY_INTERNALKEY = (1U << 31),
 
     // Making OP_INTERNALKEY non-standard
-    SCRIPT_VERIFY_DISCOURAGE_INTERNALKEY = (1U << 32),
+    SCRIPT_VERIFY_DISCOURAGE_INTERNALKEY = (1U << 30),
 
     // Validating OP_CHECKSIGFROMSTACK
     SCRIPT_VERIFY_CHECKSIGFROMSTACK = (1U << 31),
 
     // Making OP_CHECKSIGFROMSTACK non-standard
-    SCRIPT_VERIFY_DISCOURAGE_CHECKSIGFROMSTACK = (1U << 32),
+    SCRIPT_VERIFY_DISCOURAGE_CHECKSIGFROMSTACK = (1U << 30),
 
     // Constants to point to the highest flag in use. Add new flags above this line.
     //

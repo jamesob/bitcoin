@@ -22,10 +22,6 @@ const struct VBDeploymentInfo VersionBitsDeploymentInfo[Consensus::MAX_VERSION_B
         /*.gbt_force =*/ true,
     },
     {
-        /*.name =*/ "cat",
-        /*.gbt_force =*/ true,
-    },
-    {
         /*.name =*/ "opcat",
         /*.gbt_force =*/ true,
     },
