@@ -476,7 +476,7 @@ enum class CoinsCacheSizeState
  * current best chain.
  *
  * Eventually, the API here is targeted at being exposed externally as a
- * consumable libconsensus library, so any functions added must only call
+ * consumable library, so any functions added must only call
  * other class member functions, pure functions in other parts of the consensus
  * library, callbacks via the validation interface, or read/write-to-disk
  * functions (eventually this will also be via callbacks).
@@ -1298,5 +1298,8 @@ bool IsBIP30Repeat(const CBlockIndex& block_index);
 
 /** Identifies blocks which coinbase output was subsequently overwritten in the UTXO set (see BIP30) */
 bool IsBIP30Unspendable(const CBlockIndex& block_index);
+
+// Returns the script flags which should be checked for a given block
+unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const ChainstateManager& chainman);
 
 #endif // BITCOIN_VALIDATION_H
