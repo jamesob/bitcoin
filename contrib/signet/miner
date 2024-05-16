@@ -136,14 +136,25 @@ def generate_psbt(tmpl, reward_spk, *, blocktime=None, poolid=None):
     psbt.o = [ PSBTMap() ]
     return psbt.to_base64()
 
-def get_poolid(args):
-    if args.poolid is not None:
-        if args.poolnum is not None:
-             logging.error("Can only specify one of --poolid and --poolnum")
-             raise Exception("bad arguments")
-        return args.poolid.encode('utf8')
-    elif args.poolnum is not None:
-        return b"/signet:%d/" % (args.poolnum)
+def get_poolid(args, prefer_gbt=False):
+    if prefer_gbt:
+        if args.prefer_gbt_poolid is not None and args.prefer_gbt_poolnum is not None:
+            logging.error("Can only specify one of --prefer-gbt-poolid and --prefer-gbt-poolnum")
+            raise Exception("bad arguments")
+        poolid, poolnum = args.prefer_gbt_poolid, args.prefer_gbt_poolnum
+    else:
+        if args.poolid is not None and args.poolnum is not None:
+            logging.error("Can only specify one of --poolid and --poolnum")
+            raise Exception("bad arguments")
+        poolid, poolnum = args.poolid, args.poolnum
+
+    if poolid is not None:
+        return poolid.encode('utf8')
+    elif poolnum is not None:
+        return b"/signet:%d/" % (poolnum)
+    elif prefer_gbt:
+        # fallback to non-prefer-gbt args if specified
+        return get_poolid(args)
     else:
         return None
 
@@ -389,7 +400,13 @@ def do_generate(args):
         logging.error("--max-interval must be at least 960 (16 minutes)")
         return 1
 
+    if args.prefer_gbt_cli is not None:
+        prefer_cli = lambda *a, input=b"", **kwargs: bitcoin_cli(args.prefer_gbt_cli.split(" "), list(a), input=input, **kwargs)
+    else:
+        prefer_cli = None
+
     poolid = get_poolid(args)
+    prefer_poolid = get_poolid(args, prefer_gbt=True)
 
     ultimate_target = nbits_to_target(int(args.nbits,16))
 
@@ -400,7 +417,6 @@ def do_generate(args):
     bestheader = {"hash": None}
     lastheader = None
     while max_blocks is None or mined_blocks < max_blocks:
-
         # current status?
         bci = json.loads(args.bcli("getblockchaininfo"))
 
@@ -433,25 +449,53 @@ def do_generate(args):
             time.sleep(sleep_for)
             continue
 
-        # gbt
-        tmpl = gen.gbt(args.bcli, bci["bestblockhash"], now)
-        if tmpl is None:
-            continue
-
-        logging.debug("GBT template: %s", tmpl)
-
         # address for reward
-        reward_addr, reward_spk = get_reward_addr_spk(args, tmpl["height"])
+        reward_addr, reward_spk = get_reward_addr_spk(args, bci["blocks"])
 
-        # mine block
-        logging.debug("Mining block delta=%s start=%s mine=%s", seconds_to_hms(gen.mine_time-bestheader["time"]), gen.mine_time, gen.is_mine)
-        mined_blocks += 1
-        block = gen.mine(args.bcli, args.grind_cmd, tmpl, reward_spk, poolid)
-        if block is None:
-            return 1
+        mined_blocks += 1 # count attempts, not successes
+        done = False
+        if prefer_cli is not None:
+            # gbt via preferred cli
+            try:
+                tmpl = gen.gbt(prefer_cli, bci["bestblockhash"], now)
+            except:
+                logging.warning("Unable to obtain preferred GBT")
+                tmpl = None
+            if tmpl is not None:
+                logging.debug("Preferred GBT template: %s", tmpl)
 
-        # submit block
-        r = args.bcli("-stdin", "submitblock", input=block.serialize().hex().encode('utf8'))
+                # mine block
+                logging.debug("Mining preferred block delta=%s start=%s mine=%s", seconds_to_hms(gen.mine_time-bestheader["time"]), gen.mine_time, gen.is_mine)
+                block = gen.mine(args.bcli, args.grind_cmd, tmpl, reward_spk, prefer_poolid)
+                if block is None:
+                    logging.warning("mining preferred block failed")
+                else:
+                    r = args.bcli("-stdin", "submitblock", input=block.serialize().hex().encode('utf8'))
+                    if r is None or r == "":
+                        done = True
+                    else:
+                        logging.warning("submitblock based on preferred template returned %r" % (r,))
+
+        if not done:
+            # no preferred gbt, or preferred gbt failed
+            tmpl = gen.gbt(args.bcli, bci["bestblockhash"], now)
+            if tmpl is None:
+                continue
+
+            logging.debug("GBT template: %s", tmpl)
+
+            # mine block
+            logging.debug("Mining block delta=%s start=%s mine=%s", seconds_to_hms(gen.mine_time-bestheader["time"]), gen.mine_time, gen.is_mine)
+            block = gen.mine(args.bcli, args.grind_cmd, tmpl, reward_spk, poolid)
+            if block is None:
+                return 1
+
+            # submit block
+            r = args.bcli("-stdin", "submitblock", input=block.serialize().hex().encode('utf8'))
+            if r != "":
+                logging.warning("submitblock returned %s for height %d hash %s", r, tmpl["height"], block.hash)
+                continue
+            done = True
 
         # report
         bstr = "block" if gen.is_mine else "backup block"
@@ -462,8 +506,6 @@ def do_generate(args):
 
         logging.debug("Block hash %s payout to %s", block.hash, reward_addr)
         logging.info("Mined %s at height %d; next in %s (%s)", bstr, tmpl["height"], seconds_to_hms(next_delta), ("mine" if next_is_mine else "backup"))
-        if r != "":
-            logging.warning("submitblock returned %s for height %d hash %s", r, tmpl["height"], block.hash)
         lastheader = block.hash
 
 def do_calibrate(args):
@@ -537,8 +579,11 @@ def main():
     generate.add_argument("--backup-delay", default=300, type=int, help="Seconds to delay before mining blocks reserved for other miners (default=300)")
     generate.add_argument("--standby-delay", default=0, type=int, help="Seconds to delay before mining blocks (default=0)")
     generate.add_argument("--max-interval", default=1800, type=int, help="Maximum interblock interval (seconds)")
+    generate.add_argument("--prefer-gbt-cli", default=None, type=str, help="Alternative bitcoin-cli invocation for getblocktemplate (optional)")
     generate.add_argument("--poolnum", default=None, type=int, help="Identify blocks that you mine")
     generate.add_argument("--poolid", default=None, type=str, help="Identify blocks that you mine (eg: /signet:1/)")
+    generate.add_argument("--prefer-gbt-poolnum", default=None, type=int, help="Identify blocks that you mine using prefer-gbt")
+    generate.add_argument("--prefer-gbt-poolid", default=None, type=str, help="Identify blocks that you mine using prefer-gbt (eg: /signet:2/)")
 
     calibrate = cmds.add_parser("calibrate", help="Calibrate difficulty")
     calibrate.set_defaults(fn=do_calibrate)
