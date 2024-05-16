@@ -230,8 +230,7 @@ class Generate:
 
 
     def __init__(self, multiminer=None, ultimate_target=None, poisson=False, max_interval=1800,
-                 standby_delay=0, backup_delay=0, set_block_time=None,
-                 poolid=None):
+                 standby_delay=0, backup_delay=0, set_block_time=None):
         if multiminer is None:
             multiminer = (0, 1, 1)
         (self.multi_low, self.multi_high, self.multi_period) = multiminer
@@ -241,7 +240,6 @@ class Generate:
         self.standby_delay = standby_delay
         self.backup_delay = backup_delay
         self.set_block_time = set_block_time
-        self.poolid = poolid
 
     def next_block_delta(self, last_nbits, last_hash):
         # strategy:
@@ -324,8 +322,8 @@ class Generate:
 
         return tmpl
 
-    def mine(self, bcli, grind_cmd, tmpl, reward_spk):
-        psbt = generate_psbt(tmpl, reward_spk, blocktime=self.mine_time, poolid=self.poolid)
+    def mine(self, bcli, grind_cmd, tmpl, reward_spk, poolid):
+        psbt = generate_psbt(tmpl, reward_spk, blocktime=self.mine_time, poolid=poolid)
         input_stream = os.linesep.join([psbt, "true", "ALL"]).encode('utf8')
         psbt_signed = json.loads(bcli("-stdin", "walletprocesspsbt", input=input_stream))
         if not psbt_signed.get("complete",False):
@@ -396,7 +394,7 @@ def do_generate(args):
     ultimate_target = nbits_to_target(int(args.nbits,16))
 
     gen = Generate(multiminer=my_blocks, ultimate_target=ultimate_target, poisson=args.poisson, max_interval=args.max_interval,
-                   standby_delay=args.standby_delay, backup_delay=args.backup_delay, set_block_time=args.set_block_time, poolid=poolid)
+                   standby_delay=args.standby_delay, backup_delay=args.backup_delay, set_block_time=args.set_block_time)
 
     mined_blocks = 0
     bestheader = {"hash": None}
@@ -448,7 +446,7 @@ def do_generate(args):
         # mine block
         logging.debug("Mining block delta=%s start=%s mine=%s", seconds_to_hms(gen.mine_time-bestheader["time"]), gen.mine_time, gen.is_mine)
         mined_blocks += 1
-        block = gen.mine(args.bcli, args.grind_cmd, tmpl, reward_spk)
+        block = gen.mine(args.bcli, args.grind_cmd, tmpl, reward_spk, poolid)
         if block is None:
             return 1
 
