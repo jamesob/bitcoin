@@ -152,6 +152,10 @@ enum : uint32_t {
     // discourage OP_CHECKTEMPLATEVERIFY
     SCRIPT_VERIFY_DISCOURAGE_CHECKTEMPLATEVERIFY = (1U << 23),
 
+    // Support OP_CAT in tapscript
+    SCRIPT_VERIFY_OP_CAT = (1U << 24),
+    SCRIPT_VERIFY_DISCOURAGE_OP_CAT = (1U << 25),
+
     // Constants to point to the highest flag in use. Add new flags above this line.
     //
     SCRIPT_VERIFY_END_MARKER
