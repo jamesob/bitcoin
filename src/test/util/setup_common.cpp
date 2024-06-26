@@ -106,7 +106,7 @@ static void ExitFailure(std::string_view str_err)
 }
 
 BasicTestingSetup::BasicTestingSetup(const ChainType chainType, TestOpts opts)
-    : m_args{}
+    : m_logger{LogInstance()}, m_args{}
 {
     m_node.shutdown_signal = &m_interrupt;
     m_node.shutdown_request = [this]{ return m_interrupt(); };
@@ -251,9 +251,9 @@ ChainTestingSetup::ChainTestingSetup(const ChainType chainType, TestOpts opts)
             .blocks_dir = m_args.GetBlocksDirPath(),
             .notifications = chainman_opts.notifications,
         };
-        m_node.chainman = std::make_unique<ChainstateManager>(*Assert(m_node.shutdown_signal), chainman_opts, blockman_opts);
+        m_node.chainman = std::make_unique<ChainstateManager>(m_logger, *Assert(m_node.shutdown_signal), chainman_opts, blockman_opts);
         LOCK(m_node.chainman->GetMutex());
-        m_node.chainman->m_blockman.m_block_tree_db = std::make_unique<BlockTreeDB>(DBParams{
+        m_node.chainman->m_blockman.m_block_tree_db = std::make_unique<BlockTreeDB>(m_logger, DBParams{
             .path = m_args.GetDataDirNet() / "blocks" / "index",
             .cache_bytes = static_cast<size_t>(m_cache_sizes.block_tree_db),
             .memory_only = true,
