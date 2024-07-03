@@ -78,6 +78,8 @@ constexpr inline auto TEST_DIR_PATH_ELEMENT{"test_common bitcoin"}; // Includes 
 /** Random context to get unique temp data dirs. Separate from m_rng, which can be seeded from a const env var */
 static FastRandomContext g_rng_temp_path;
 static const bool g_rng_temp_path_init{[] {
+    // Make sure there is a global logger SeedStartup() can use.
+    BCLog::Logger logger;
     // Must be initialized before any SeedRandomForTest
     (void)g_rng_temp_path.rand64();
     return true;
@@ -106,7 +108,7 @@ static void ExitFailure(std::string_view str_err)
 }
 
 BasicTestingSetup::BasicTestingSetup(const ChainType chainType, TestOpts opts)
-    : m_logger{LogInstance()}, m_args{}
+    : m_args{}
 {
     m_node.shutdown_signal = &m_interrupt;
     m_node.shutdown_request = [this]{ return m_interrupt(); };
