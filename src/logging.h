@@ -124,6 +124,9 @@ namespace BCLog {
         fs::path m_file_path;
         std::atomic<bool> m_reopen_file{false};
 
+        Logger();
+        ~Logger();
+
         std::string GetLogPrefix(LogFlags category, Level level) const;
 
         /** Send a string to the log output */
