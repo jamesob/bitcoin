@@ -193,6 +193,7 @@ add_library(bitcoin_node STATIC EXCLUDE_FROM_ALL
   addrman.cpp
   banman.cpp
   bip324.cpp
+  bitcoind.cpp
   blockencodings.cpp
   blockfilter.cpp
   chain.cpp
@@ -302,7 +303,7 @@ target_link_libraries(bitcoin_node
 # Bitcoin Core bitcoind.
 if(BUILD_DAEMON)
   add_executable(bitcoind
-    bitcoind.cpp
+    main.cpp
     init/bitcoind.cpp
   )
   add_windows_resources(bitcoind bitcoind-res.rc)
@@ -315,7 +316,7 @@ if(BUILD_DAEMON)
 endif()
 if(WITH_MULTIPROCESS)
   add_executable(bitcoin-node
-    bitcoind.cpp
+    main.cpp
     init/bitcoin-node.cpp
   )
   target_link_libraries(bitcoin-node
