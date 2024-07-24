@@ -1268,7 +1268,7 @@ BOOST_AUTO_TEST_CASE(sign_invalid_miniscript)
 
     // Create a Taproot output which contains a leaf in which a non-32 bytes push is used where a public key is expected
     // by the Miniscript parser. This offending Script was found by the RPC fuzzer.
-    const auto invalid_pubkey{ParseHex("173d36c8c9c9c9ffffffffffff0200000000021e1e37373721361818181818181e1e1e1e19000000000000000000b19292929292926b006c9b9b9292")};
+    const auto invalid_pubkey{HexLiteral("173d36c8c9c9c9ffffffffffff0200000000021e1e37373721361818181818181e1e1e1e19000000000000000000b19292929292926b006c9b9b9292")};
     TaprootBuilder builder;
     builder.Add(0, {invalid_pubkey}, 0xc0);
     builder.Finalize(XOnlyPubKey::NUMS_H);
@@ -1392,60 +1392,60 @@ BOOST_AUTO_TEST_CASE(script_FindAndDelete)
     BOOST_CHECK_EQUAL(FindAndDelete(s, d), 4);
     BOOST_CHECK(s == expect);
 
-    s = ScriptFromHex("0302ff03"); // PUSH 0x02ff03 onto stack
-    d = ScriptFromHex("0302ff03");
+    s = Script(HexLiteral("0302ff03")); // PUSH 0x02ff03 onto stack
+    d = Script(HexLiteral("0302ff03"));
     expect = CScript();
     BOOST_CHECK_EQUAL(FindAndDelete(s, d), 1);
     BOOST_CHECK(s == expect);
 
-    s = ScriptFromHex("0302ff030302ff03"); // PUSH 0x2ff03 PUSH 0x2ff03
-    d = ScriptFromHex("0302ff03");
+    s = Script(HexLiteral("0302ff030302ff03")); // PUSH 0x2ff03 PUSH 0x2ff03
+    d = Script(HexLiteral("0302ff03"));
     expect = CScript();
     BOOST_CHECK_EQUAL(FindAndDelete(s, d), 2);
     BOOST_CHECK(s == expect);
 
-    s = ScriptFromHex("0302ff030302ff03");
-    d = ScriptFromHex("02");
+    s = Script(HexLiteral("0302ff030302ff03"));
+    d = Script(HexLiteral("02"));
     expect = s; // FindAndDelete matches entire opcodes
     BOOST_CHECK_EQUAL(FindAndDelete(s, d), 0);
     BOOST_CHECK(s == expect);
 
-    s = ScriptFromHex("0302ff030302ff03");
-    d = ScriptFromHex("ff");
+    s = Script(HexLiteral("0302ff030302ff03"));
+    d = Script(HexLiteral("ff"));
     expect = s;
     BOOST_CHECK_EQUAL(FindAndDelete(s, d), 0);
     BOOST_CHECK(s == expect);
 
     // This is an odd edge case: strip of the push-three-bytes
     // prefix, leaving 02ff03 which is push-two-bytes:
-    s = ScriptFromHex("0302ff030302ff03");
-    d = ScriptFromHex("03");
+    s = Script(HexLiteral("0302ff030302ff03"));
+    d = Script(HexLiteral("03"));
     expect = CScript() << Vec(HexLiteral("ff03")) << Vec(HexLiteral("ff03"));
     BOOST_CHECK_EQUAL(FindAndDelete(s, d), 2);
     BOOST_CHECK(s == expect);
 
     // Byte sequence that spans multiple opcodes:
-    s = ScriptFromHex("02feed5169"); // PUSH(0xfeed) OP_1 OP_VERIFY
-    d = ScriptFromHex("feed51");
+    s = Script(HexLiteral("02feed5169")); // PUSH(0xfeed) OP_1 OP_VERIFY
+    d = Script(HexLiteral("feed51"));
     expect = s;
     BOOST_CHECK_EQUAL(FindAndDelete(s, d), 0); // doesn't match 'inside' opcodes
     BOOST_CHECK(s == expect);
 
-    s = ScriptFromHex("02feed5169"); // PUSH(0xfeed) OP_1 OP_VERIFY
-    d = ScriptFromHex("02feed51");
-    expect = ScriptFromHex("69");
+    s = Script(HexLiteral("02feed5169")); // PUSH(0xfeed) OP_1 OP_VERIFY
+    d = Script(HexLiteral("02feed51"));
+    expect = Script(HexLiteral("69"));
     BOOST_CHECK_EQUAL(FindAndDelete(s, d), 1);
     BOOST_CHECK(s == expect);
 
-    s = ScriptFromHex("516902feed5169");
-    d = ScriptFromHex("feed51");
+    s = Script(HexLiteral("516902feed5169"));
+    d = Script(HexLiteral("feed51"));
     expect = s;
     BOOST_CHECK_EQUAL(FindAndDelete(s, d), 0);
     BOOST_CHECK(s == expect);
 
-    s = ScriptFromHex("516902feed5169");
-    d = ScriptFromHex("02feed51");
-    expect = ScriptFromHex("516969");
+    s = Script(HexLiteral("516902feed5169"));
+    d = Script(HexLiteral("02feed51"));
+    expect = Script(HexLiteral("516969"));
     BOOST_CHECK_EQUAL(FindAndDelete(s, d), 1);
     BOOST_CHECK(s == expect);
 
@@ -1463,15 +1463,15 @@ BOOST_AUTO_TEST_CASE(script_FindAndDelete)
 
     // Another weird edge case:
     // End with invalid push (not enough data)...
-    s = ScriptFromHex("0003feed");
-    d = ScriptFromHex("03feed"); // ... can remove the invalid push
-    expect = ScriptFromHex("00");
+    s = Script(HexLiteral("0003feed"));
+    d = Script(HexLiteral("03feed")); // ... can remove the invalid push
+    expect = Script(HexLiteral("00"));
     BOOST_CHECK_EQUAL(FindAndDelete(s, d), 1);
     BOOST_CHECK(s == expect);
 
-    s = ScriptFromHex("0003feed");
-    d = ScriptFromHex("00");
-    expect = ScriptFromHex("03feed");
+    s = Script(HexLiteral("0003feed"));
+    d = Script(HexLiteral("00"));
+    expect = Script(HexLiteral("03feed"));
     BOOST_CHECK_EQUAL(FindAndDelete(s, d), 1);
     BOOST_CHECK(s == expect);
 }
@@ -1480,13 +1480,13 @@ BOOST_AUTO_TEST_CASE(script_HasValidOps)
 {
     // Exercise the HasValidOps functionality
     CScript script;
-    script = ScriptFromHex("76a9141234567890abcdefa1a2a3a4a5a6a7a8a9a0aaab88ac"); // Normal script
+    script = Script(HexLiteral("76a9141234567890abcdefa1a2a3a4a5a6a7a8a9a0aaab88ac")); // Normal script
     BOOST_CHECK(script.HasValidOps());
-    script = ScriptFromHex("76a914ff34567890abcdefa1a2a3a4a5a6a7a8a9a0aaab88ac");
+    script = Script(HexLiteral("76a914ff34567890abcdefa1a2a3a4a5a6a7a8a9a0aaab88ac"));
     BOOST_CHECK(script.HasValidOps());
-    script = ScriptFromHex("ff88ac"); // Script with OP_INVALIDOPCODE explicit
+    script = Script(HexLiteral("ff88ac")); // Script with OP_INVALIDOPCODE explicit
     BOOST_CHECK(!script.HasValidOps());
-    script = ScriptFromHex("88acc0"); // Script with undefined opcode
+    script = Script(HexLiteral("88acc0")); // Script with undefined opcode
     BOOST_CHECK(!script.HasValidOps());
 }
 
