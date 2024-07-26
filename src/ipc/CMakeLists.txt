@@ -10,6 +10,7 @@ add_library(bitcoin_ipc STATIC EXCLUDE_FROM_ALL
 )
 
 target_capnp_sources(bitcoin_ipc ${PROJECT_SOURCE_DIR}
+  capnp/common.capnp
   capnp/echo.capnp
   capnp/init.capnp
   capnp/mining.capnp
