@@ -3,6 +3,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <common/args.h>
+#include <common/setting.h>
 #include <sync.h>
 #include <test/util/logging.h>
 #include <test/util/setup_common.h>
@@ -20,6 +21,11 @@
 
 #include <boost/test/unit_test.hpp>
 
+using common::Field;
+using common::Setting;
+using common::SettingGroup;
+using common::SettingOptions;
+using common::SettingsValue;
 using util::ToString;
 
 BOOST_FIXTURE_TEST_SUITE(argsman_tests, BasicTestingSetup)
@@ -88,102 +94,120 @@ struct Options {
     std::optional<std::vector<Address>> listen_addresses;
 };
 
-void RegisterArgs(ArgsManager& args)
-{
-    args.AddArg("-upnp", "",          ArgsManager::ALLOW_BOOL, {});
-    args.AddArg("-rpcserver", "",     ArgsManager::ALLOW_BOOL, {});
-    args.AddArg("-dnsseed", "",       ArgsManager::ALLOW_BOOL, {});
-    args.AddArg("-bantime", "",       ArgsManager::ALLOW_INT, {});
-    args.AddArg("-bytespersigop", "", ArgsManager::ALLOW_INT | ArgsManager::DISALLOW_NEGATION, {});
-    args.AddArg("-assumevalid", "",   ArgsManager::ALLOW_STRING, {});
-    args.AddArg("-logfile", "",       ArgsManager::ALLOW_STRING, {});
-    args.AddArg("-chain", "",         ArgsManager::ALLOW_STRING | ArgsManager::DISALLOW_NEGATION, {});
-    args.AddArg("-rescan", "",        ArgsManager::ALLOW_INT | ArgsManager::ALLOW_BOOL, {});
-    args.AddArg("-ipcbind", "",       ArgsManager::ALLOW_STRING | ArgsManager::ALLOW_BOOL, {});
-    args.AddArg("-loadblock", "",     ArgsManager::ALLOW_STRING | ArgsManager::ALLOW_LIST, {});
-    args.AddArg("-listen", "",        ArgsManager::ALLOW_STRING | ArgsManager::ALLOW_LIST, {});
-}
-
-void ReadOptions(const ArgsManager& args, Options& options)
-{
-    if (auto value = args.GetBoolArg("-upnp")) options.enable_upnp = *value;
-
-    if (auto value = args.GetBoolArg("-rpcserver")) options.enable_rpc_server = *value;
-
-    if (auto value = args.GetBoolArg("-dnsseed")) options.enable_dns_seed = *value;
-
-    if (auto value = args.GetIntArg("-bantime")) {
-        if (*value < 0) throw std::runtime_error(strprintf("-bantime value %i is negative", *value));
-        options.bantime = std::chrono::seconds{*value};
-    }
-
-    if (auto value = args.GetIntArg("-bytespersigop")) {
-        if (*value < 1) throw std::runtime_error(strprintf("-bytespersigop value %i is less than 1", *value));
-        options.bytes_per_sigop = *value;
-    }
-
-    if (auto value = args.GetArg("-assumevalid"); value && !value->empty()) {
-        if (auto hash{uint256::FromHex(*value)}) {
-            options.assumevalid = *hash;
-        } else {
-            throw std::runtime_error(strprintf("-assumevalid value '%s' is not a valid hash", *value));
-        }
-    }
-
-    if (auto value = args.GetArg("-logfile")) {
-        options.log_file = fs::PathFromString(*value);
-    }
-
-    if (auto value = args.GetArg("-chain")) {
-        if (auto chain_type{ChainTypeFromString(*value)}) {
-           options.chain = *chain_type;
-        } else {
-            throw std::runtime_error(strprintf("Invalid chain type '%s'", *value));
-        }
-    }
-
-    if (auto value{args.GetBoolArg("-rescan")}) {
-        // If -rescan was passed with no height, enable wallet rescan with
-        // default options. If -norescan was passed, do nothing.
-        if (*value) options.wallet_rescan.emplace();
-    } else if (auto value = args.GetIntArg("-rescan")) {
-        // If -rescan=<height> command was passed enable wallet rescan from the
-        // specified height.
-        options.wallet_rescan = RescanOptions{.start_height=*value};
-    }
-
-    if (auto value{args.GetBoolArg("-ipcbind")}) {
-        // If -ipcbind was passed with no address, set ipc_bind = true, or if
-        // -noipcbind was passed, set ipc_bind = false.
-        options.ipc_bind = *value;
-    } else if (auto value = args.GetArg("-ipcbind")) {
-        // If -ipcbind=<address> was passed, set ipc_bind = <address>
-        options.ipc_bind = *value;
-    }
-
-    for (const std::string& value : args.GetArgs("-loadblock")) {
-        if (value.empty()) throw std::runtime_error(strprintf("-loadblock value '%s' is not a valid file path", value));
-        options.load_block.push_back(fs::PathFromString(value));
-    }
-
-    if (args.IsArgNegated("-listen")) {
-        // If -nolisten was passed, disable listening by assigning an empty list
-        // of listening addresses.
-        options.listen_addresses.emplace();
-    } else if (auto addresses{args.GetArgs("-listen")}; !addresses.empty()) {
-        // If -listen=<addresses> options were passed, explicitly add these as
-        // listening addresses, otherwise leave listening option unset to enable
-        // default listening behavior.
-        options.listen_addresses.emplace();
-        for (const std::string& value : addresses) {
-            Address addr{"", 8333};
-            if (!SplitHostPort(value, addr.port, addr.host) || addr.host.empty()) {
-                throw std::runtime_error(strprintf("-listen address '%s' is not a valid host[:port]", value));
+using OptionsSet = SettingGroup<
+    Setting<"-upnp", "Use UPnP to map the listening port (default: %u)",
+        Field<&Options::enable_upnp>, OptionsCategory::CONNECTION>,
+    Setting<"-rpcserver", "Whether to enable RPC server (default: %u)",
+        Field<&Options::enable_rpc_server>, OptionsCategory::CONNECTION>,
+    Setting<"-dnsseed", "",
+        Field<&Options::enable_dns_seed>, OptionsCategory::CONNECTION>,
+    Setting<"-bantime", "Ban time (default: %u)",
+        Field<&Options::bantime>, OptionsCategory::CONNECTION>
+        ::ParseAs<int64_t>
+        ::GetFn<+[](const SettingsValue& value, std::chrono::seconds& out, std::string& error) {
+            if (value.isFalse()) {
+                out = std::chrono::seconds{0};
+            } else if (value.isNum()) {
+                auto int_value{value.getInt<int64_t>()};
+                if (int_value < 0) throw std::runtime_error(strprintf("-bantime value %i is negative", int_value));
+                out = std::chrono::seconds{int_value};
             }
-            options.listen_addresses->emplace_back(std::move(addr));
-        }
-    }
-}
+            return true;
+        }>
+        ::FormatFn<+[](const std::chrono::seconds& value) {
+            return value.count();
+        }>,
+    Setting<"-bytespersigop", "Bytes per sigop (default: %u)",
+        Field<&Options::bytes_per_sigop>, OptionsCategory::CONNECTION>::Options<SettingOptions{.disallow_negation = true}>
+        ::GetFn<+[](const SettingsValue& value, int& out, std::string& error) {
+            if (value.isNum()) {
+                auto int_value{value.getInt<int64_t>()};
+                if (int_value < 1) throw std::runtime_error(strprintf("-bytespersigop value %i is less than 1", int_value));
+                out = int_value;
+            }
+            return true;
+        }>,
+    Setting<"-assumevalid", "",
+        Field<&Options::assumevalid>, OptionsCategory::CONNECTION>
+        ::ParseAs<std::string_view>
+        ::GetFn<+[](const SettingsValue& value, std::optional<uint256>& out, std::string& error) {
+            if (value.isFalse()) {
+                out.reset();
+            } else if (value.isStr()) {
+                if (auto hash{uint256::FromHex(value.get_str())}) {
+                    out = *hash;
+                } else {
+                    throw std::runtime_error(strprintf("-assumevalid value '%s' is not a valid hash", value.get_str()));
+                }
+            }
+            return true;
+        }>,
+    Setting<"-logfile", "Log file (default: %s)",
+        Field<&Options::log_file>, OptionsCategory::CONNECTION>,
+    Setting<"-chain", "Network chain (default: %s)",
+        Field<&Options::chain>, OptionsCategory::CONNECTION>::Options<SettingOptions{.disallow_negation = true}>
+        ::ParseAs<std::string_view>
+        ::GetFn<+[](const SettingsValue& value, ChainType& out, std::string& error) {
+            if (value.isStr()) {
+                if (auto chain_type{ChainTypeFromString(value.get_str())}) {
+                    out = *chain_type;
+                } else {
+                    throw std::runtime_error(strprintf("Invalid chain type '%s'", value.get_str()));
+                }
+            }
+            return true;
+        }>
+        ::FormatFn<+[](const ChainType& value) {
+            return ChainTypeToString(value);
+        }>,
+    Setting<"-rescan", "",
+        Field<&Options::wallet_rescan>, OptionsCategory::CONNECTION>
+        ::ParseAs<std::variant<int, bool>>
+        ::GetFn<+[](const SettingsValue& value, std::optional<RescanOptions>& out, std::string& error) {
+            if (value.isTrue()) {
+                // If -rescan was passed with no height, enable wallet rescan with
+                // default options.
+                out.emplace();
+            } else if (value.isNum()) {
+                // If -rescan=<height> command was passed enable wallet rescan from the
+                // specified height.
+                out = RescanOptions{.start_height=value.getInt<int>()};
+            }
+            return true;
+        }>,
+    Setting<"-ipcbind", "",
+        Field<&Options::ipc_bind>, OptionsCategory::CONNECTION>,
+    Setting<"-loadblock", "",
+        Field<&Options::load_block>, OptionsCategory::CONNECTION>
+        ::ParseAs<std::vector<std::string_view>>
+        ::GetFn<+[](const SettingsValue& value, std::vector<fs::path>& out, std::string& error) {
+            if (value.isStr()) {
+                if (value.get_str().empty()) throw std::runtime_error(strprintf("-loadblock value '%s' is not a valid file path", value.get_str()));
+                out.emplace_back(fs::PathFromString(value.get_str()));
+            }
+            return true;
+        }>,
+    Setting<"-listen", "",
+        Field<&Options::listen_addresses>, OptionsCategory::CONNECTION>
+        ::ParseAs<std::vector<std::string_view>>
+        ::GetFn<+[](const SettingsValue& value, std::optional<std::vector<Address>>& out, std::string& error) {
+            if (value.isFalse()) {
+                // If -nolisten was passed, disable listening by assigning an empty list
+                // of listening addresses.
+                out.emplace();
+            } else if (value.isStr()) {
+                // If -listen=<addresses> options were passed, explicitly add these as
+                // listening addresses, otherwise leave listening option unset to enable
+                // default listening behavior.
+                if (!out) out.emplace();
+                Address addr{"", 8333};
+                if (!SplitHostPort(value.get_str(), addr.port, addr.host) || addr.host.empty()) {
+                    throw std::runtime_error(strprintf("-listen address '%s' is not a valid host[:port]", value.get_str()));
+                }
+                out->emplace_back(std::move(addr));
+            }
+            return true;
+        }>>;
 
 //! Return Options::ipc_bind as a human readable string for easier testing.
 std::string IpcBindStr(const Options& options)
@@ -233,7 +257,7 @@ struct TestSetup : public BasicTestingSetup
     Options ParseOptions(const std::vector<std::string>& opts)
     {
         ArgsManager args;
-        RegisterArgs(args);
+        OptionsSet::Register(args);
         std::vector<const char*> argv{"ignored"};
         for (const auto& opt : opts) {
             argv.push_back(opt.c_str());
@@ -244,7 +268,7 @@ struct TestSetup : public BasicTestingSetup
         }
         BOOST_CHECK_EQUAL(error, "");
         Options options;
-        ReadOptions(args, options);
+        OptionsSet::Update(args, options);
         return options;
     }
 };
@@ -401,6 +425,71 @@ BOOST_FIXTURE_TEST_CASE(ExampleOptions, example_options::TestSetup)
     BOOST_CHECK_EXCEPTION(ParseOptions({"-listen"}), std::exception, HasReason{"Cannot set -listen with no value. Please specify value with -listen=value. It must be set to a string."});
     BOOST_CHECK_EXCEPTION(ParseOptions({"-listen="}), std::exception, HasReason{"-listen address '' is not a valid host[:port]"});
 }
+
+BOOST_AUTO_TEST_CASE(options_help_test)
+{
+    ArgsManager args;
+    example_options::OptionsSet::Register(args);
+    BOOST_CHECK_EQUAL(args.GetHelpMessage(),
+        "Connection options:\n"
+        "\n"
+        "  -assumevalid\n"
+        "       \n"
+        "\n"
+        "  -bantime\n"
+        "       Ban time (default: 86400)\n"
+        "\n"
+        "  -bytespersigop\n"
+        "       Bytes per sigop (default: 20)\n"
+        "\n"
+        "  -chain\n"
+        "       Network chain (default: main)\n"
+        "\n"
+        "  -dnsseed\n"
+        "       \n"
+        "\n"
+        "  -ipcbind\n"
+        "       \n"
+        "\n"
+        "  -listen\n"
+        "       \n"
+        "\n"
+        "  -loadblock\n"
+        "       \n"
+        "\n"
+        "  -logfile\n"
+        "       Log file (default: debug.log)\n"
+        "\n"
+        "  -rescan\n"
+        "       \n"
+        "\n"
+        "  -rpcserver\n"
+        "       Whether to enable RPC server (default: 1)\n"
+        "\n"
+        "  -upnp\n"
+        "       Use UPnP to map the listening port (default: 0)\n\n");
+}
+
+BOOST_AUTO_TEST_CASE(setting_type_test)
+{
+    const bool DEFAULT_UPNP{false};
+
+    using UpnpSetting = Setting<
+        "-upnp", "Use UPnP to map the listening port (default: %u)",
+        bool, OptionsCategory::CONNECTION>::Default<DEFAULT_UPNP>;
+
+    ArgsManager args;
+    UpnpSetting::Register(args);
+    bool upnp{UpnpSetting::Get(args)};
+
+    BOOST_CHECK_EQUAL(args.GetHelpMessage(),
+        "Connection options:\n"
+        "\n"
+        "  -upnp\n"
+        "       Use UPnP to map the listening port (default: 0)\n\n");
+    BOOST_CHECK_EQUAL(upnp, DEFAULT_UPNP);
+}
+
 
 BOOST_AUTO_TEST_CASE(util_datadir)
 {
