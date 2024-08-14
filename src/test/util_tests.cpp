@@ -459,7 +459,7 @@ BOOST_AUTO_TEST_CASE(util_IsHexNumber)
 
 BOOST_AUTO_TEST_CASE(util_seed_insecure_rand)
 {
-    SeedRandomForTest(SeedRand::ZEROS);
+    SeedRandomForTest(m_rng, SeedRand::ZEROS);
     for (int mod=2;mod<11;mod++)
     {
         int mask = 1;

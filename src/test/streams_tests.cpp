@@ -435,7 +435,7 @@ BOOST_AUTO_TEST_CASE(streams_buffered_file_skip)
 BOOST_AUTO_TEST_CASE(streams_buffered_file_rand)
 {
     // Make this test deterministic.
-    SeedRandomForTest(SeedRand::ZEROS);
+    SeedRandomForTest(m_rng, SeedRand::ZEROS);
 
     fs::path streams_test_filename = m_args.GetDataDirBase() / "streams_test_tmp";
     for (int rep = 0; rep < 50; ++rep) {

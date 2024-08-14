@@ -25,7 +25,7 @@ enum class SeedRand {
 };
 
 /** Seed the RNG for testing. This affects all randomness, except GetStrongRandBytes(). */
-void SeedRandomForTest(SeedRand seed = SeedRand::SEED);
+void SeedRandomForTest(FastRandomContext& rng, SeedRand seed = SeedRand::SEED);
 
 static inline uint32_t InsecureRand32()
 {

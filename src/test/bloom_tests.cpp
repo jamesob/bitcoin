@@ -469,7 +469,7 @@ std::vector<unsigned char> BloomTest::RandomData()
 
 BOOST_AUTO_TEST_CASE(rolling_bloom)
 {
-    SeedRandomForTest(SeedRand::ZEROS);
+    SeedRandomForTest(m_rng, SeedRand::ZEROS);
 
     // last-100-entry, 1% false positive:
     CRollingBloomFilter rb1(100, 0.01);

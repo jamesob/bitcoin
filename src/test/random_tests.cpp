@@ -23,7 +23,7 @@ BOOST_AUTO_TEST_CASE(osrandom_tests)
 BOOST_AUTO_TEST_CASE(fastrandom_tests_deterministic)
 {
     // Check that deterministic FastRandomContexts are deterministic
-    SeedRandomForTest(SeedRand::ZEROS);
+    SeedRandomForTest(m_rng, SeedRand::ZEROS);
     FastRandomContext ctx1{true};
     FastRandomContext ctx2{true};
 

@@ -209,9 +209,9 @@ public:
         BOOST_CHECK_MESSAGE(passed, "insecure_rand: " + rand_seed.ToString());
     }
 
-    prevector_tester() {
-        SeedRandomForTest();
-        rand_seed = InsecureRand256();
+    prevector_tester(FastRandomContext& rng) {
+        SeedRandomForTest(rng);
+        rand_seed = rng.rand256();
         rand_cache.Reseed(rand_seed);
     }
 };
@@ -219,7 +219,7 @@ public:
 BOOST_AUTO_TEST_CASE(PrevectorTestInt)
 {
     for (int j = 0; j < 64; j++) {
-        prevector_tester<8, int> test;
+        prevector_tester<8, int> test{m_rng};
         for (int i = 0; i < 2048; i++) {
             if (InsecureRandBits(2) == 0) {
                 test.insert(InsecureRandRange(test.size() + 1), int(InsecureRand32()));
