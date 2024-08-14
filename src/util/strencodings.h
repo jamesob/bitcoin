@@ -369,4 +369,40 @@ std::string Capitalize(std::string str);
  */
 std::optional<uint64_t> ParseByteUnits(std::string_view str, ByteUnit default_multiplier);
 
+namespace util {
+/** consteval version of HexDigit() without the lookup table. */
+consteval uint8_t ConstevalHexDigit(const char c)
+{
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 0xa;
+
+    throw "Only lowercase hex digits are allowed, for consistency";
+}
+
+/** Converts from hex string literal to byte array at compile time.
+ *
+ * @note It may be preferable to use Vec(HexLiteral(...)) instead of
+ * HexLiteral() to save stack space when declaring a local variable, if the hex
+ * string is large. Alternately the variable could be declared constexpr to
+ * avoid using stack space.
+ */
+template<typename Byte = uint8_t, size_t N>
+consteval auto HexLiteral(const char (&hex_str)[N]) {
+    std::array<Byte, N/2> array{};
+    size_t chars{hex_str[N-1] == '\0' ? N-1 : N};
+    if (chars % 2 != 0) throw "2 hex digits required per byte";
+    for (size_t i{0}; i < chars; ++i) {
+        array[i / 2] |= static_cast<Byte>(ConstevalHexDigit(hex_str[i]) << (i % 2 ? 0 : 4));
+    }
+    return array;
+}
+
+/** Convert from array to vector. */
+template<typename T, size_t N>
+std::vector<T> Vec(const std::array<T, N>& array)
+{
+    return {array.begin(), array.end()};
+}
+} // namespace util
+
 #endif // BITCOIN_UTIL_STRENCODINGS_H

@@ -45,6 +45,8 @@
 #include <boost/test/unit_test.hpp>
 
 using namespace std::literals;
+using util::ConstevalHexDigit;
+using util::HexLiteral;
 using util::Join;
 using util::RemovePrefix;
 using util::RemovePrefixView;
@@ -53,6 +55,7 @@ using util::Split;
 using util::SplitString;
 using util::TrimString;
 using util::TrimStringView;
+using util::Vec;
 
 static const std::string STRING_WITH_EMBEDDED_NULL_CHAR{"1"s "\0" "1"s};
 
@@ -148,9 +151,13 @@ BOOST_AUTO_TEST_CASE(parse_hex)
     std::vector<unsigned char> result;
     std::vector<unsigned char> expected(std::begin(ParseHex_expected), std::end(ParseHex_expected));
     // Basic test vector
+    result = Vec(HexLiteral("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f"));
+    BOOST_CHECK_EQUAL_COLLECTIONS(result.begin(), result.end(), expected.begin(), expected.end());
     result = ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f");
     BOOST_CHECK_EQUAL_COLLECTIONS(result.begin(), result.end(), expected.begin(), expected.end());
     result = TryParseHex<uint8_t>("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f").value();
+    BOOST_CHECK_EQUAL_COLLECTIONS(result.begin(), result.end(), expected.begin(), expected.end());
+    result = Vec(HexLiteral("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f"));
     BOOST_CHECK_EQUAL_COLLECTIONS(result.begin(), result.end(), expected.begin(), expected.end());
 
     // Spaces between bytes must be supported
@@ -175,8 +182,10 @@ BOOST_AUTO_TEST_CASE(parse_hex)
     BOOST_CHECK_EQUAL_COLLECTIONS(result.begin(), result.end(), expected.begin(), expected.end());
 
     // Empty string is supported
+    BOOST_CHECK_EQUAL(HexLiteral("").size(), 0);
     BOOST_CHECK_EQUAL(ParseHex("").size(), 0);
     BOOST_CHECK_EQUAL(TryParseHex<uint8_t>("").value().size(), 0);
+    BOOST_CHECK_EQUAL(Vec(HexLiteral("")).size(), 0);
 
     // Spaces between nibbles is treated as invalid
     BOOST_CHECK_EQUAL(ParseHex("AAF F").size(), 0);
@@ -197,6 +206,14 @@ BOOST_AUTO_TEST_CASE(parse_hex)
     // Truncated input is treated as invalid
     BOOST_CHECK_EQUAL(ParseHex("12 3").size(), 0);
     BOOST_CHECK(!TryParseHex("12 3").has_value());
+}
+
+BOOST_AUTO_TEST_CASE(consteval_hex_digit)
+{
+    BOOST_CHECK_EQUAL(ConstevalHexDigit('0'), 0);
+    BOOST_CHECK_EQUAL(ConstevalHexDigit('9'), 9);
+    BOOST_CHECK_EQUAL(ConstevalHexDigit('a'), 0xa);
+    BOOST_CHECK_EQUAL(ConstevalHexDigit('f'), 0xf);
 }
 
 BOOST_AUTO_TEST_CASE(util_HexStr)
