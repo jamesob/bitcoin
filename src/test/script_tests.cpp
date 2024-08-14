@@ -32,6 +32,9 @@
 
 #include <univalue.h>
 
+using util::HexLiteral;
+using util::Vec;
+
 // Uncomment if you want to output updated JSON tests.
 // #define UPDATE_JSON_TESTS
 
@@ -1411,7 +1414,7 @@ BOOST_AUTO_TEST_CASE(script_FindAndDelete)
     // prefix, leaving 02ff03 which is push-two-bytes:
     s = ScriptFromHex("0302ff030302ff03");
     d = ScriptFromHex("03");
-    expect = CScript() << ParseHex("ff03") << ParseHex("ff03");
+    expect = CScript() << Vec(HexLiteral("ff03")) << Vec(HexLiteral("ff03"));
     BOOST_CHECK_EQUAL(FindAndDelete(s, d), 2);
     BOOST_CHECK(s == expect);
 

@@ -15,6 +15,8 @@
 
 #include <boost/test/unit_test.hpp>
 
+using util::HexLiteral;
+using util::Vec;
 
 namespace wallet {
 BOOST_FIXTURE_TEST_SUITE(ismine_tests, BasicTestingSetup)
@@ -682,7 +684,7 @@ BOOST_AUTO_TEST_CASE(ismine_standard)
         BOOST_CHECK(keystore.GetLegacyScriptPubKeyMan()->AddKey(keys[0]));
 
         scriptPubKey.clear();
-        scriptPubKey << OP_0 << ToByteVector(ParseHex("aabb"));
+        scriptPubKey << OP_0 << Vec(HexLiteral("aabb"));
 
         result = keystore.GetLegacyScriptPubKeyMan()->IsMine(scriptPubKey);
         BOOST_CHECK_EQUAL(result, ISMINE_NO);
@@ -697,7 +699,7 @@ BOOST_AUTO_TEST_CASE(ismine_standard)
         BOOST_CHECK(keystore.GetLegacyScriptPubKeyMan()->AddKey(keys[0]));
 
         scriptPubKey.clear();
-        scriptPubKey << OP_16 << ToByteVector(ParseHex("aabb"));
+        scriptPubKey << OP_16 << Vec(HexLiteral("aabb"));
 
         result = keystore.GetLegacyScriptPubKeyMan()->IsMine(scriptPubKey);
         BOOST_CHECK_EQUAL(result, ISMINE_NO);
