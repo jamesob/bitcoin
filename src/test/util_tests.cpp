@@ -146,7 +146,7 @@ static const unsigned char ParseHex_expected[65] = {
 BOOST_AUTO_TEST_CASE(parse_hex)
 {
     std::vector<unsigned char> result;
-    std::vector<unsigned char> expected(ParseHex_expected, ParseHex_expected + sizeof(ParseHex_expected));
+    std::vector<unsigned char> expected(std::begin(ParseHex_expected), std::end(ParseHex_expected));
     // Basic test vector
     result = ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f");
     BOOST_CHECK_EQUAL_COLLECTIONS(result.begin(), result.end(), expected.begin(), expected.end());
@@ -154,28 +154,29 @@ BOOST_AUTO_TEST_CASE(parse_hex)
     BOOST_CHECK_EQUAL_COLLECTIONS(result.begin(), result.end(), expected.begin(), expected.end());
 
     // Spaces between bytes must be supported
+    expected = {0x12, 0x34, 0x56, 0x78};
     result = ParseHex("12 34 56 78");
-    BOOST_CHECK(result.size() == 4 && result[0] == 0x12 && result[1] == 0x34 && result[2] == 0x56 && result[3] == 0x78);
+    BOOST_CHECK_EQUAL_COLLECTIONS(result.begin(), result.end(), expected.begin(), expected.end());
     result = TryParseHex<uint8_t>("12 34 56 78").value();
-    BOOST_CHECK(result.size() == 4 && result[0] == 0x12 && result[1] == 0x34 && result[2] == 0x56 && result[3] == 0x78);
+    BOOST_CHECK_EQUAL_COLLECTIONS(result.begin(), result.end(), expected.begin(), expected.end());
 
     // Leading space must be supported (used in BerkeleyEnvironment::Salvage)
+    expected = {0x89, 0x34, 0x56, 0x78};
     result = ParseHex(" 89 34 56 78");
-    BOOST_CHECK(result.size() == 4 && result[0] == 0x89 && result[1] == 0x34 && result[2] == 0x56 && result[3] == 0x78);
+    BOOST_CHECK_EQUAL_COLLECTIONS(result.begin(), result.end(), expected.begin(), expected.end());
     result = TryParseHex<uint8_t>(" 89 34 56 78").value();
-    BOOST_CHECK(result.size() == 4 && result[0] == 0x89 && result[1] == 0x34 && result[2] == 0x56 && result[3] == 0x78);
+    BOOST_CHECK_EQUAL_COLLECTIONS(result.begin(), result.end(), expected.begin(), expected.end());
 
     // Mixed case and spaces are supported
+    expected = {0xff, 0xaa};
     result = ParseHex("     Ff        aA    ");
-    BOOST_CHECK(result.size() == 2 && result[0] == 0xff && result[1] == 0xaa);
+    BOOST_CHECK_EQUAL_COLLECTIONS(result.begin(), result.end(), expected.begin(), expected.end());
     result = TryParseHex<uint8_t>("     Ff        aA    ").value();
-    BOOST_CHECK(result.size() == 2 && result[0] == 0xff && result[1] == 0xaa);
+    BOOST_CHECK_EQUAL_COLLECTIONS(result.begin(), result.end(), expected.begin(), expected.end());
 
     // Empty string is supported
-    result = ParseHex("");
-    BOOST_CHECK(result.size() == 0);
-    result = TryParseHex<uint8_t>("").value();
-    BOOST_CHECK(result.size() == 0);
+    BOOST_CHECK_EQUAL(ParseHex("").size(), 0);
+    BOOST_CHECK_EQUAL(TryParseHex<uint8_t>("").value().size(), 0);
 
     // Spaces between nibbles is treated as invalid
     BOOST_CHECK_EQUAL(ParseHex("AAF F").size(), 0);
