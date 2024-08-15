@@ -19,6 +19,8 @@
 
 #include <boost/test/unit_test.hpp>
 
+using util::HexLiteral;
+
 int ApplyTxInUndo(Coin&& undo, CCoinsViewCache& view, const COutPoint& out);
 void UpdateCoins(const CTransaction& tx, CCoinsViewCache& inputs, CTxUndo &txundo, int nHeight);
 

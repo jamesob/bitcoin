@@ -25,6 +25,8 @@
 
 #include <boost/test/unit_test.hpp>
 
+using util::HexLiteral;
+
 BOOST_FIXTURE_TEST_SUITE(crypto_tests, BasicTestingSetup)
 
 template<typename Hasher, typename In, typename Out>

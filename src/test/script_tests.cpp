@@ -1361,6 +1361,12 @@ static CScript ScriptFromHex(const std::string& str)
     return CScript(data.begin(), data.end());
 }
 
+template<size_t N>
+CScript Script(const std::array<uint8_t, N>& array)
+{
+    return {array.begin(), array.end()};
+}
+
 BOOST_AUTO_TEST_CASE(script_FindAndDelete)
 {
     // Exercise the FindAndDelete functionality

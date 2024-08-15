@@ -12,6 +12,8 @@
 #include <test/util/setup_common.h>
 #include <wallet/test/wallet_test_fixture.h>
 
+using util::HexLiteral;
+
 namespace wallet {
 BOOST_FIXTURE_TEST_SUITE(psbt_wallet_tests, WalletTestingSetup)
 

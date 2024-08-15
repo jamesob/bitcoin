@@ -20,6 +20,8 @@
 
 #include <boost/test/unit_test.hpp>
 
+using util::HexLiteral;
+
 BOOST_AUTO_TEST_SUITE(txpackage_tests)
 // A fee amount that is above 1sat/vB but below 5sat/vB for most transactions created within these
 // unit tests.
