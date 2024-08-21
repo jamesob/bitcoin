@@ -2561,6 +2561,216 @@ static RPCHelpMan scanblocks()
     };
 }
 
+std::set<COutPoint> ParseOutpoints(const UniValue& params)
+{
+    std::set<COutPoint> outpoints;
+
+    for (unsigned int i = 0; i < params.size(); i++) {
+        std::string str = params[i].get_str();
+        size_t colon_pos = str.find(':');
+        if (colon_pos == std::string::npos) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid format for COutPoint, must be 'txid:index'");
+        }
+
+        std::string txid_str = str.substr(0, colon_pos);
+        std::string index_str = str.substr(colon_pos + 1);
+
+        uint256 txid = ParseHashV(UniValue(txid_str), "txid");
+        uint32_t index = static_cast<uint32_t>(std::stoul(index_str));
+
+        COutPoint outpoint(Txid::FromUint256(txid), index);
+        outpoints.insert(outpoint);
+    }
+
+    return outpoints;
+}
+
+
+static RPCHelpMan getblocksactivity()
+{
+    return RPCHelpMan{"getblocksactivity",
+        "\nTODO.\n"
+        "This call may take several minutes. Make sure to use no RPC timeout (bitcoin-cli -rpcclienttimeout=0)",
+        {
+            RPCArg{"blockhashes", RPCArg::Type::ARR, RPCArg::Optional::OMITTED, "The list of blockhashes to examine for activity\n", {
+                {"blockhash", RPCArg::Type::STR_HEX, RPCArg::Optional::OMITTED, "A valid blockhash"},
+            }},
+            scan_objects_arg_desc,
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "", {
+                {RPCResult::Type::ARR, "activity", "events", {
+                    {RPCResult::Type::OBJ, "", "", {
+                        {RPCResult::Type::STR, "type", "always 'spend'"},
+                        {RPCResult::Type::STR, "address", ""},
+                        {RPCResult::Type::STR_AMOUNT, "amount", "The total amount in " + CURRENCY_UNIT + " of the spent output"},
+                        {RPCResult::Type::STR_HEX, "blockhash", ""},
+                        {RPCResult::Type::NUM, "height", "Height of the spend"},
+                        {RPCResult::Type::STR_HEX, "spend_txid", ""},
+                        {RPCResult::Type::NUM, "spend_vout", ""},
+                        {RPCResult::Type::STR_HEX, "prevout_txid", ""},
+                        {RPCResult::Type::NUM, "prevout_vout", ""},
+                    }},
+                    {RPCResult::Type::OBJ, "", "", {
+                        {RPCResult::Type::STR, "type", "always 'receive'"},
+                        {RPCResult::Type::STR, "address", ""},
+                        {RPCResult::Type::STR_AMOUNT, "amount", "The total amount in " + CURRENCY_UNIT + " of the new output"},
+                        {RPCResult::Type::STR_HEX, "blockhash", ""},
+                        {RPCResult::Type::NUM, "height", "Height of the spend"},
+                        {RPCResult::Type::STR_HEX, "txid", ""},
+                        {RPCResult::Type::NUM, "vout", ""},
+                    }},
+                }},
+            },
+            /*skip_type_check=*/true,
+        },
+        RPCExamples{
+            HelpExampleCli("getblocksactivity", "start '[\"addr(bcrt1q4u4nsgk6ug0sqz7r3rj9tykjxrsl0yy4d0wwte)\"]' 300000")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    UniValue ret(UniValue::VOBJ);
+    UniValue activity(UniValue::VARR);
+    NodeContext& node = EnsureAnyNodeContext(request.context);
+    ChainstateManager& chainman = EnsureChainman(node);
+    std::set<std::string> address_set;
+    std::vector<uint256> blockhashes;
+
+    {
+        // Validate all given blockhashes.
+        LOCK(::cs_main);
+        for (const UniValue& blockhash : request.params[0].get_array().getValues()) {
+            uint256 bhash = ParseHashV(blockhash, "blockhash");
+            if (!chainman.m_blockman.LookupBlockIndex(bhash)) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "invalid blockhash given");
+            }
+            blockhashes.push_back(bhash);
+        }
+    }
+
+    std::set<CScript> scripts_to_watch;
+    std::map<CScript, std::string> descriptors;
+
+    // loop through the scan objects, add scripts to the address_set
+    for (const UniValue& scanobject : request.params[1].get_array().getValues()) {
+        FlatSigningProvider provider;
+        std::vector<CScript> scripts = EvalDescriptorStringOrObject(scanobject, provider);
+
+        for (const CScript& script : scripts) {
+            scripts_to_watch.insert(script);
+            std::string inferred = InferDescriptor(script, provider)->ToString();
+            descriptors.emplace(script, std::move(inferred));
+        }
+    }
+
+    const auto AddSpend = [&](const Coin& coin, const CTransactionRef& tx, int vout, const CTxIn& txin, const uint256* blockhash) {
+        UniValue event(UniValue::VOBJ);
+        event.pushKV("type", "spend");
+        event.pushKV("address", ScriptToAddress(coin.out.scriptPubKey).value_or(""));
+        event.pushKV("desc", descriptors[coin.out.scriptPubKey]);
+        event.pushKV("amount", ValueFromAmount(coin.out.nValue));
+        event.pushKV("blockhash", blockhash ? blockhash->ToString() : "");
+        event.pushKV("height", coin.nHeight);
+        event.pushKV("spend_txid", tx->GetHash().ToString());
+        event.pushKV("spend_vout", vout);
+        event.pushKV("prevout_txid", txin.prevout.hash.ToString());
+        event.pushKV("prevout_vout", txin.prevout.n);
+
+        return event;
+    };
+
+    const auto AddReceive = [&](const CTxOut& txout, const CBlockIndex* index, int vout, const CTransactionRef& tx) {
+        UniValue event(UniValue::VOBJ);
+        event.pushKV("type", "receive");
+        event.pushKV("address", ScriptToAddress(txout.scriptPubKey).value_or(""));
+        event.pushKV("desc", descriptors[txout.scriptPubKey]);
+        event.pushKV("amount", ValueFromAmount(txout.nValue));
+        event.pushKV("blockhash", index ? index->GetBlockHash().ToString() : "");
+        event.pushKV("height", index->nHeight);
+        event.pushKV("txid", tx->GetHash().ToString());
+        event.pushKV("vout", vout);
+
+        return event;
+    };
+
+    const CBlockIndex* blockindex;
+    BlockManager* blockman;
+    Chainstate& active_chainstate = chainman.ActiveChainstate();
+    {
+        LOCK(::cs_main);
+        blockman = CHECK_NONFATAL(&active_chainstate.m_blockman);
+    }
+
+    for (const uint256 blockhash : blockhashes) {
+        blockindex = CHECK_NONFATAL(WITH_LOCK(::cs_main,
+                    return chainman.m_blockman.LookupBlockIndex(blockhash)));
+        const std::vector<uint8_t> block_data{GetRawBlockChecked(chainman.m_blockman, *blockindex)};
+        DataStream block_stream{block_data};
+        CBlock block{};
+        block_stream >> TX_WITH_WITNESS(block);
+
+        const CBlockUndo block_undo{GetUndoChecked(*blockman, *blockindex)};
+
+        for (size_t i = 0; i < block.vtx.size(); ++i) {
+            const auto& tx = block.vtx.at(i);
+
+            if (i > 0) {
+                // skip coinbase; spends can't happen there.
+                const auto& txundo = block_undo.vtxundo.at(i - 1);
+
+                for (size_t vinIdx = 0; vinIdx < tx->vin.size(); ++vinIdx) {
+                    const auto& coin = txundo.vprevout.at(vinIdx);
+                    const auto& txin = tx->vin.at(vinIdx);
+                    if (scripts_to_watch.find(coin.out.scriptPubKey) != scripts_to_watch.end()) {
+                        activity.push_back(AddSpend(coin, tx, vinIdx, txin, &blockhash));
+                    }
+                }
+            }
+
+            for (size_t voutIdx = 0; voutIdx < tx->vout.size(); ++voutIdx) {
+                const auto& vout = tx->vout.at(voutIdx);
+                if (scripts_to_watch.find(vout.scriptPubKey) != scripts_to_watch.end()) {
+                    activity.push_back(AddReceive(vout, blockindex, voutIdx, tx));
+                }
+            }
+        }
+    }
+
+    const CTxMemPool& mempool = EnsureMemPool(node);
+    {
+        LOCK2(::cs_main, mempool.cs);
+        for (const CTxMemPoolEntry& e : mempool.entryAll()) {
+            const auto& tx = e.GetSharedTx();
+
+            {
+                CCoinsViewCache* coins_view = &active_chainstate.CoinsTip();
+                Coin coin;
+
+                for (size_t vinIdx = 0; vinIdx < tx->vin.size(); ++vinIdx) {
+                    const auto& txin = tx->vin.at(vinIdx);
+                    Assert(coins_view->GetCoin(txin.prevout, coin));
+
+                    if (scripts_to_watch.find(coin.out.scriptPubKey) != scripts_to_watch.end()) {
+                        activity.push_back(AddSpend(coin, tx, vinIdx, txin, nullptr));
+                    }
+                }
+            }
+
+            for (size_t voutIdx = 0; voutIdx < tx->vout.size(); ++voutIdx) {
+                const auto& vout = tx->vout.at(voutIdx);
+                if (scripts_to_watch.find(vout.scriptPubKey) != scripts_to_watch.end()) {
+                    activity.push_back(AddReceive(vout, nullptr, voutIdx, tx));
+                }
+            }
+        }
+    }
+
+    ret.pushKV("activity", activity);
+    return ret;
+},
+    };
+}
+
 static RPCHelpMan getblockfilter()
 {
     return RPCHelpMan{"getblockfilter",
@@ -2970,6 +3180,7 @@ void RegisterBlockchainRPCCommands(CRPCTable& t)
         {"blockchain", &preciousblock},
         {"blockchain", &scantxoutset},
         {"blockchain", &scanblocks},
+        {"blockchain", &getblocksactivity},
         {"blockchain", &getblockfilter},
         {"blockchain", &dumptxoutset},
         {"blockchain", &loadtxoutset},
