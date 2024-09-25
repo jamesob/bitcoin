@@ -1791,13 +1791,11 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
     // Wait for genesis block to be processed
     if (WITH_LOCK(chainman.GetMutex(), return chainman.ActiveTip() == nullptr)) {
         WAIT_LOCK(kernel_notifications.m_tip_block_mutex, lock);
-        // We previously could hang here if shutdown was requested prior to
-        // ImportBlocks getting started, so instead we just wait on a timer to
-        // check ShutdownRequested() regularly.
-        while (kernel_notifications.m_tip_block.IsNull() && !ShutdownRequested(node)) {
-            kernel_notifications.m_tip_block_cv.wait_for(lock, 500ms);
-        }
+        kernel_notifications.m_tip_block_cv.wait(lock, [&] {
+            return !kernel_notifications.m_tip_block.IsNull() || ShutdownRequested(node);
+        });
     }
+    assert(WITH_LOCK(chainman.GetMutex(), return chainman.ActiveChain().Tip() != nullptr));
 
     if (ShutdownRequested(node)) {
         return false;
