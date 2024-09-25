@@ -945,7 +945,7 @@ public:
         const auto deadline{now + timeout};
         {
             WAIT_LOCK(notifications().m_tip_block_mutex, lock);
-            while ((notifications().m_tip_block == uint256() || notifications().m_tip_block == current_tip) && !chainman().m_interrupt) {
+            while ((notifications().m_tip_block == uint256::ZERO || notifications().m_tip_block == current_tip) && !chainman().m_interrupt) {
                 now = std::chrono::steady_clock::now();
                 if (now >= deadline) break;
                 notifications().m_tip_block_cv.wait_until(lock, std::min(deadline, now + tick));
