@@ -135,13 +135,14 @@ public:
     void startShutdown() override
     {
         NodeContext& ctx{*Assert(m_context)};
-        if (!(*Assert(ctx.shutdown))()) {
+        if (!(Assert(ctx.shutdown_request))()) {
             LogError("Failed to send shutdown signal\n");
         }
+
         // Stop RPC for clean shutdown if any of waitfor* commands is executed.
         if (args().GetBoolArg("-server", false)) {
             InterruptRPC();
-            StopRPC(ctx);
+            StopRPC();
         }
     }
     bool shutdownRequested() override { return ShutdownRequested(*Assert(m_context)); };
