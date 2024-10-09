@@ -558,6 +558,8 @@ static RPCHelpMan decodescript()
         case TxoutType::WITNESS_UNKNOWN:
         case TxoutType::WITNESS_V1_TAPROOT:
         case TxoutType::ANCHOR:
+        // don't wrap CTV because P2SH CTV is a hash cycle
+        case TxoutType::TX_BARE_DEFAULT_CHECK_TEMPLATE_VERIFY_HASH:
             // Should not be wrapped
             return false;
         } // no default case, so the compiler can warn about missing cases
@@ -601,6 +603,8 @@ static RPCHelpMan decodescript()
             case TxoutType::WITNESS_V0_SCRIPTHASH:
             case TxoutType::WITNESS_V1_TAPROOT:
             case TxoutType::ANCHOR:
+            // don't wrap CTV because P2SH CTV is a hash cycle
+            case TxoutType::TX_BARE_DEFAULT_CHECK_TEMPLATE_VERIFY_HASH:
                 // Should not be wrapped
                 return false;
             } // no default case, so the compiler can warn about missing cases

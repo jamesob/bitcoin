@@ -15,6 +15,10 @@ const struct VBDeploymentInfo VersionBitsDeploymentInfo[Consensus::MAX_VERSION_B
         /*.name =*/ "testdummy",
         /*.gbt_force =*/ true,
     },
+    {
+        /*.name =*/ "checktemplateverify",
+        /*.gbt_force =*/ true,
+    },
 };
 
 std::string DeploymentName(Consensus::BuriedDeployment dep)
@@ -76,6 +80,9 @@ const std::map<std::string, uint32_t> g_verify_flag_names{
     FLAG_NAME(DISCOURAGE_UPGRADABLE_PUBKEYTYPE),
     FLAG_NAME(DISCOURAGE_OP_SUCCESS),
     FLAG_NAME(DISCOURAGE_UPGRADABLE_TAPROOT_VERSION),
+    FLAG_NAME(DEFAULT_CHECK_TEMPLATE_VERIFY_HASH),
+    FLAG_NAME(DISCOURAGE_UPGRADABLE_CHECK_TEMPLATE_VERIFY_HASH),
+    FLAG_NAME(DISCOURAGE_CHECK_TEMPLATE_VERIFY_HASH),
 };
 #undef FLAG_NAME
 
