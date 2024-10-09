@@ -5760,7 +5760,7 @@ util::Result<CBlockIndex*> ChainstateManager::ActivateSnapshot(
 
     if (auto res{this->PopulateAndValidateSnapshot(*snapshot_chainstate, coins_file, metadata)}; !res) {
         LOCK(::cs_main);
-        return cleanup_bad_snapshot(strprintf(Untranslated("Population failed: %s"), util::ErrorString(res)));
+        return cleanup_bad_snapshot(strprintf(Untranslated("Population failed: %s"), util::ErrorString(res).original));
     }
 
     LOCK(::cs_main);  // cs_main required for rest of snapshot activation.
@@ -6091,7 +6091,7 @@ SnapshotCompletionResult ChainstateManager::MaybeCompleteSnapshotValidation()
 
         auto rename_result = m_snapshot_chainstate->InvalidateCoinsDBOnDisk();
         if (!rename_result) {
-            user_error = strprintf(Untranslated("%s\n%s"), user_error, util::ErrorString(rename_result));
+            user_error += Untranslated("\n") + util::ErrorString(rename_result);
         }
 
         GetNotifications().fatalError(user_error);
