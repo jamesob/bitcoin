@@ -6,6 +6,7 @@
 #define BITCOIN_UTIL_TRANSLATION_H
 
 #include <tinyformat.h>
+#include <util/string.h>
 
 #include <cassert>
 #include <functional>
@@ -64,6 +65,14 @@ struct ConstEvalTranslated {
     std::string translate() const { return util::translate(lit); }
     operator bilingual_str() const { return {lit, translate()}; }
 };
+
+template <unsigned num_params>
+struct bilingual_fmt {
+    const ConstevalFormatString<num_params> original;
+    consteval bilingual_fmt(ConstEvalTranslated o) : original{o.lit}
+    {
+    }
+};
 } // namespace util
 
 consteval auto _(util::ConstEvalTranslated str) { return str; }
@@ -74,7 +83,7 @@ inline bilingual_str Untranslated(std::string original) { return {original, orig
 // Provide an overload of tinyformat::format which can take bilingual_str arguments.
 namespace tinyformat {
 template <typename... Args>
-bilingual_str format(const bilingual_str& fmt, const Args&... args)
+bilingual_str format(util::bilingual_fmt<sizeof...(Args)> fmt, const Args&... args)
 {
     const auto translate_arg{[](const auto& arg, bool translated) -> const auto& {
         if constexpr (std::is_same_v<decltype(arg), const bilingual_str&>) {
@@ -84,7 +93,7 @@ bilingual_str format(const bilingual_str& fmt, const Args&... args)
         }
     }};
     return bilingual_str{tfm::format(fmt.original, translate_arg(args, false)...),
-                         tfm::format(fmt.translated, translate_arg(args, true)...)};
+                         tfm::format(util::translate(fmt.original.fmt), translate_arg(args, true)...)};
 }
 } // namespace tinyformat
 

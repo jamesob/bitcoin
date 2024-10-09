@@ -894,7 +894,7 @@ bool AppInitParameterInteraction(const ArgsManager& args)
     }
     bilingual_str errors;
     for (const auto& arg : args.GetUnsuitableSectionOnlyArgs()) {
-        errors += strprintf(_("Config setting for %s only applied on %s network when in [%s] section.") + Untranslated("\n"), arg, ChainTypeToString(chain), ChainTypeToString(chain));
+        errors += strprintf(_("Config setting for %s only applied on %s network when in [%s] section."), arg, ChainTypeToString(chain), ChainTypeToString(chain)) + Untranslated("\n");
     }
 
     if (!errors.empty()) {
