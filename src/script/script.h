@@ -217,6 +217,7 @@ enum opcodetype
     // Tapscript expansion
     OP_INTERNALKEY = 0xcb,
     OP_CHECKSIGFROMSTACK = 0xcc,
+    OP_PAIRCOMMIT = 0xcd,
 
     OP_INVALIDOPCODE = 0xff,
 
