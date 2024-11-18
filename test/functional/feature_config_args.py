@@ -27,6 +27,48 @@ class ConfArgsTest(BitcoinTestFramework):
         self.wallet_names = []
         self.disable_autoconnect = False
 
+    def test_dir_config(self):
+        self.log.info('Error should be emitted if config file is a directory')
+        conf_path = self.nodes[0].datadir_path / 'bitcoin.conf'
+        os.rename(conf_path, conf_path.with_suffix('.confbkp'))
+        conf_path.mkdir()
+        self.stop_node(0)
+        self.nodes[0].assert_start_raises_init_error(
+            expected_msg=f'Error: Error reading configuration file: config file "{conf_path}" could not be read.',
+        )
+        conf_path.rmdir()
+        os.rename(conf_path.with_suffix('.confbkp'), conf_path)
+
+        self.log.debug('Verifying includeconf directive pointing to directory is caught')
+        with open(conf_path, 'a', encoding='utf-8') as conf:
+            conf.write(f'includeconf={self.nodes[0].datadir_path}\n')
+        self.nodes[0].assert_start_raises_init_error(
+            expected_msg=f'Error: Error reading configuration file: Failed to include configuration file {self.nodes[0].datadir_path}',
+        )
+        self.nodes[0].replace_in_config([(f'includeconf={self.nodes[0].datadir_path}', '')])
+
+    def test_negated_config(self):
+        self.log.info('Disabling configuration via -noconf')
+
+        self.log.debug('Verifying garbage in config can be detected')
+        conf_path = self.nodes[0].datadir_path / 'bitcoin.conf'
+        os.rename(conf_path, conf_path.with_suffix('.confbkp'))
+        with open(conf_path, 'a', encoding='utf-8') as conf:
+            conf.write(f'garbage\n')
+        self.nodes[0].assert_start_raises_init_error(
+            extra_args=['-regtest'],
+            expected_msg='Error: Error reading configuration file: parse error on line 1: garbage',
+        )
+
+        self.log.debug('Verifying no error occurs when adding -noconf')
+        self.start_node(0, extra_args=['-regtest', '-noconf', f'-rpcport={util.rpc_port(0)}'])
+
+        self.log.debug('Verifying no error occurs when removing config file')
+        os.remove(conf_path)
+        self.restart_node(0, extra_args=['-regtest', '-noconf', f'-rpcport={util.rpc_port(0)}'])
+        self.stop_node(0)
+        os.rename(conf_path.with_suffix('.confbkp'), conf_path)
+
     def test_config_file_parser(self):
         self.log.info('Test config file parser')
         self.stop_node(0)
@@ -423,6 +465,8 @@ class ConfArgsTest(BitcoinTestFramework):
         self.test_networkactive()
         self.test_connect_with_seednode()
 
+        self.test_dir_config()
+        self.test_negated_config()
         self.test_config_file_parser()
         self.test_config_file_log()
         self.test_invalid_command_line_options()
@@ -456,7 +500,7 @@ class ConfArgsTest(BitcoinTestFramework):
 
         # Check that an explicitly specified config file that cannot be opened fails
         none_existent_conf_file = default_data_dir / "none_existent_bitcoin.conf"
-        self.nodes[0].assert_start_raises_init_error(['-conf=' + f'{none_existent_conf_file}'], 'Error: Error reading configuration file: specified config file "' + f'{none_existent_conf_file}' + '" could not be opened.')
+        self.nodes[0].assert_start_raises_init_error(['-conf=' + f'{none_existent_conf_file}'], 'Error: Error reading configuration file: config file "' + f'{none_existent_conf_file}' + '" could not be read.')
 
         # Create the directory and ensure the config file now works
         new_data_dir.mkdir()
