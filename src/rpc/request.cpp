@@ -86,6 +86,7 @@ static const char* const COOKIEAUTH_FILE = ".cookie";
 static fs::path GetAuthCookieFile(bool temp=false)
 {
     fs::path arg = gArgs.GetPathArg("-rpccookiefile", COOKIEAUTH_FILE);
+    if (arg.empty()) return {}; // -norpccookiefile was specified
     if (temp) {
         arg += ".tmp";
     }
@@ -106,6 +107,7 @@ bool GenerateAuthCookie(std::string* cookie_out, std::optional<fs::perms> cookie
      */
     std::ofstream file;
     fs::path filepath_tmp = GetAuthCookieFile(true);
+    if (filepath_tmp.empty()) return true; // no cookie file was requested
     file.open(filepath_tmp);
     if (!file.is_open()) {
         LogInfo("Unable to open cookie authentication file %s for writing\n", fs::PathToString(filepath_tmp));
