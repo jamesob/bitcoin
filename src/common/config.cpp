@@ -128,16 +128,15 @@ bool ArgsManager::ReadConfigFiles(std::string& error, bool ignore_invalid_keys)
     }
 
     const auto conf_path{GetConfigFilePath()};
-    std::ifstream stream{conf_path};
-
-    // not ok to have a config file specified that cannot be opened
-    if (IsArgSet("-conf") && !stream.good()) {
-        error = strprintf("specified config file \"%s\" could not be opened.", fs::PathToString(conf_path));
-        return false;
-    }
-    // ok to not have a config file
-    if (stream.good()) {
+    if (!conf_path.empty()) { // path is empty when -noconf is specified
+        std::ifstream stream{conf_path};
         if (!ReadConfigStream(stream, fs::PathToString(conf_path), error, ignore_invalid_keys)) {
+            return false;
+        }
+        // Error if config stream could not be read in full, unless it couldn't be
+        // opened at all and no config file was specified.
+        if (!stream.eof() && (stream.is_open() || IsArgSet("-conf"))) {
+            error = strprintf("config file \"%s\" could not be read.", fs::PathToString(conf_path));
             return false;
         }
         // `-includeconf` cannot be included in the command line arguments except
@@ -176,10 +175,10 @@ bool ArgsManager::ReadConfigFiles(std::string& error, bool ignore_invalid_keys)
 
             for (const std::string& conf_file_name : conf_file_names) {
                 std::ifstream conf_file_stream{AbsPathForConfigVal(*this, fs::PathFromString(conf_file_name), /*net_specific=*/false)};
-                if (conf_file_stream.good()) {
-                    if (!ReadConfigStream(conf_file_stream, conf_file_name, error, ignore_invalid_keys)) {
-                        return false;
-                    }
+                if (!ReadConfigStream(conf_file_stream, conf_file_name, error, ignore_invalid_keys)) {
+                    return false;
+                }
+                if (conf_file_stream.eof()) {
                     LogPrintf("Included configuration file %s\n", conf_file_name);
                 } else {
                     error = "Failed to include configuration file " + conf_file_name;
@@ -213,7 +212,7 @@ bool ArgsManager::ReadConfigFiles(std::string& error, bool ignore_invalid_keys)
 
 fs::path AbsPathForConfigVal(const ArgsManager& args, const fs::path& path, bool net_specific)
 {
-    if (path.is_absolute()) {
+    if (path.is_absolute() || path.empty()) {
         return path;
     }
     return fsbridge::AbsPathJoin(net_specific ? args.GetDataDirNet() : args.GetDataDirBase(), path);

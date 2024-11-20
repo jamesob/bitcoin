@@ -65,7 +65,7 @@ std::optional<ConfigError> InitConfig(ArgsManager& args, SettingsAbortFn setting
         // Show an error or warning if there is a bitcoin.conf file in the
         // datadir that is being ignored.
         const fs::path base_config_path = base_path / BITCOIN_CONF_FILENAME;
-        if (fs::exists(base_config_path) && !fs::equivalent(orig_config_path, base_config_path)) {
+        if (!orig_config_path.empty() && fs::exists(base_config_path) && !fs::equivalent(orig_config_path, base_config_path)) {
             const std::string cli_config_path = args.GetArg("-conf", "");
             const std::string config_source = cli_config_path.empty()
                 ? strprintf("data directory %s", fs::quoted(fs::PathToString(orig_datadir_path)))
