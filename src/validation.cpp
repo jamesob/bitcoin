@@ -2245,13 +2245,18 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
     }
 
     // Enforce CHECKSIGFROMSTACK(VERIFY) (BIN-2024-0003)
-    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_LN_HANCE)) {
+    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_LNHANCE)) {
         flags |= SCRIPT_VERIFY_CHECKSIGFROMSTACK;
     }
 
     // Process INTERNALKEY (BIN-2024-0004)
-    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_LN_HANCE)) {
+    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_LNHANCE)) {
         flags |= SCRIPT_VERIFY_INTERNALKEY;
+    }
+
+    // Process PAIRCOMMIT (BIN-2024-0006)
+    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_LNHANCE)) {
+        flags |= SCRIPT_VERIFY_PAIRCOMMIT;
     }
 
     // Enforce BIP147 NULLDUMMY (activated simultaneously with segwit)

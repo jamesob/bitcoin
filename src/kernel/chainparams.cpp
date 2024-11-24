@@ -385,10 +385,10 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_OP_CAT].min_activation_height = 0;
 
         // Deployment of OP_CAT (BIP xxx)
-        consensus.vDeployments[Consensus::DEPLOYMENT_LN_HANCE].bit = 5;
-        consensus.vDeployments[Consensus::DEPLOYMENT_LN_HANCE].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
-        consensus.vDeployments[Consensus::DEPLOYMENT_LN_HANCE].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
-        consensus.vDeployments[Consensus::DEPLOYMENT_LN_HANCE].min_activation_height = 0;
+        consensus.vDeployments[Consensus::DEPLOYMENT_LNHANCE].bit = 5;
+        consensus.vDeployments[Consensus::DEPLOYMENT_LNHANCE].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_LNHANCE].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_LNHANCE].min_activation_height = 0;
 
         // message start is defined as the first 4 bytes of the sha256d of the block script
         HashWriter h{};
@@ -479,10 +479,10 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_OP_CAT].min_activation_height = 0;
 
         // Deployment of OP_CAT (BIP xxx)
-        consensus.vDeployments[Consensus::DEPLOYMENT_LN_HANCE].bit = 5;
-        consensus.vDeployments[Consensus::DEPLOYMENT_LN_HANCE].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
-        consensus.vDeployments[Consensus::DEPLOYMENT_LN_HANCE].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
-        consensus.vDeployments[Consensus::DEPLOYMENT_LN_HANCE].min_activation_height = 0;
+        consensus.vDeployments[Consensus::DEPLOYMENT_LNHANCE].bit = 5;
+        consensus.vDeployments[Consensus::DEPLOYMENT_LNHANCE].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_LNHANCE].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_LNHANCE].min_activation_height = 0;
 
         consensus.nMinimumChainWork = uint256{};
         consensus.defaultAssumeValid = uint256{};

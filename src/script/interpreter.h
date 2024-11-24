@@ -188,6 +188,12 @@ enum : uint32_t {
     // Making OP_CHECKSIGFROMSTACK non-standard
     SCRIPT_VERIFY_DISCOURAGE_CHECKSIGFROMSTACK = (1U << 30),
 
+    // Validating OP_PAIRCOMMIT
+    SCRIPT_VERIFY_PAIRCOMMIT = (1U << 31),
+
+    // Making OP_PAIRCOMMIT non-standard
+    SCRIPT_VERIFY_DISCOURAGE_PAIRCOMMIT = (1U << 30),
+
     // Constants to point to the highest flag in use. Add new flags above this line.
     //
     SCRIPT_VERIFY_END_MARKER
@@ -249,6 +255,9 @@ struct PrecomputedTransactionData
 template<typename TxType>
 uint256 GetDefaultCheckTemplateVerifyHash(const TxType& tx, const uint256& outputs_hash, const uint256& sequences_hash,
                                 const uint32_t input_index);
+
+/* PairCommit Declarations */
+uint256 PairCommitHash(const std::vector<unsigned char>& x1, const std::vector<unsigned char>& x2);
 
 enum class SigVersion
 {

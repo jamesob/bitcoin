@@ -149,6 +149,7 @@ std::string GetOpName(opcodetype opcode)
     // Tapscript expansion
     case OP_INTERNALKEY            : return "OP_INTERNALKEY";
     case OP_CHECKSIGFROMSTACK      : return "OP_CHECKSIGFROMSTACK";
+    case OP_PAIRCOMMIT             : return "OP_PAIRCOMMIT";
 
     case OP_INVALIDOPCODE          : return "OP_INVALIDOPCODE";
 
