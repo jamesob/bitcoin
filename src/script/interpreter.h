@@ -156,6 +156,12 @@ enum : uint32_t {
     SCRIPT_VERIFY_OP_CAT = (1U << 24),
     SCRIPT_VERIFY_DISCOURAGE_OP_CAT = (1U << 25),
 
+    // Validating OP_CHECKSIGFROMSTACK(VERIFY)
+    SCRIPT_VERIFY_CHECKSIGFROMSTACK = (1U << 26),
+
+    // Making OP_CHECKSIGFROMSTACK(VERIFY) non-standard
+    SCRIPT_VERIFY_DISCOURAGE_CHECKSIGFROMSTACK = (1U << 27),
+
     // Constants to point to the highest flag in use. Add new flags above this line.
     //
     SCRIPT_VERIFY_END_MARKER

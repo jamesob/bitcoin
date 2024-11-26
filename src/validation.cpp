@@ -1234,7 +1234,8 @@ bool MemPoolAccept::PolicyScriptChecks(const ATMPArgs& args, Workspace& ws)
 
     const unsigned int scriptVerifyFlags = STANDARD_SCRIPT_VERIFY_FLAGS |
         (covops_active ? SCRIPT_VERIFY_NONE : SCRIPT_VERIFY_DISCOURAGE_CHECKTEMPLATEVERIFY) |
-        (covops_active ? SCRIPT_VERIFY_NONE : SCRIPT_VERIFY_DISCOURAGE_OP_CAT);
+        (covops_active ? SCRIPT_VERIFY_NONE : SCRIPT_VERIFY_DISCOURAGE_OP_CAT) |
+        (covops_active ? SCRIPT_VERIFY_NONE : SCRIPT_VERIFY_DISCOURAGE_CHECKSIGFROMSTACK);
 
     // Check input scripts and signatures.
     // This is done last to help prevent CPU exhaustion denial-of-service attacks.
@@ -2437,6 +2438,7 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
     if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_COVOPS)) {
         flags |= SCRIPT_VERIFY_CHECKTEMPLATEVERIFY;
         flags |= SCRIPT_VERIFY_OP_CAT;
+        flags |= SCRIPT_VERIFY_CHECKSIGFROMSTACK;
     }
 
     return flags;

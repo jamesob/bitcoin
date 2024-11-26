@@ -191,6 +191,8 @@ enum opcodetype
     OP_CHECKSIGVERIFY = 0xad,
     OP_CHECKMULTISIG = 0xae,
     OP_CHECKMULTISIGVERIFY = 0xaf,
+    OP_CHECKSIGFROMSTACK = 0xcc,
+    OP_CHECKSIGFROMSTACKVERIFY = 0xcd,
 
     // expansion
     OP_NOP1 = 0xb0,

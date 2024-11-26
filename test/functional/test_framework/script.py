@@ -235,6 +235,8 @@ OP_CHECKSIG = CScriptOp(0xac)
 OP_CHECKSIGVERIFY = CScriptOp(0xad)
 OP_CHECKMULTISIG = CScriptOp(0xae)
 OP_CHECKMULTISIGVERIFY = CScriptOp(0xaf)
+OP_CHECKSIGFROMSTACK = CScriptOp(0xcc)
+OP_CHECKSIGFROMSTACKVERIFY = CScriptOp(0xcd)
 
 # expansion
 OP_NOP1 = CScriptOp(0xb0)
@@ -940,6 +942,8 @@ def taproot_construct(pubkey, scripts=None, treat_internal_as_infinity=False):
 # OP_SUCCESS opcodes which have been defined.
 OP_SUCCESS_OVERRIDES = frozenset({
     OP_CAT,
+    OP_CHECKSIGFROMSTACK,
+    OP_CHECKSIGFROMSTACKVERIFY,
 })
 
 def is_op_success(o):
