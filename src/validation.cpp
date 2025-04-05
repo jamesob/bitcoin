@@ -2169,13 +2169,8 @@ bool CheckInputScripts(const CTransaction& tx, TxValidationState& state,
 {
     if (tx.IsCoinBase()) return true;
 
-    auto event = g_event_logger->time_event("CIS");
-
     if (pvChecks) {
         pvChecks->reserve(tx.vin.size());
-        event.add_metadata("sync=0");
-    } else {
-        event.add_metadata("sync=1");
     }
 
     // First check if script executions have been cached with the same
