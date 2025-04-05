@@ -52,7 +52,7 @@ public:
         }
 
         // Write CSV header
-        m_output_stream << "start_time_us,end_time_us,label,metadata\n";
+        m_output_stream << "start_time_ns,duration,label,metadata\n";
 
         // Start the writer thread
         m_writer_thread = std::thread(&EventLogger::writer_loop, this);

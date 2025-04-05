@@ -3488,6 +3488,8 @@ static void LimitValidationInterfaceQueue(ValidationSignals& signals) LOCKS_EXCL
 
 bool Chainstate::ActivateBestChain(BlockValidationState& state, std::shared_ptr<const CBlock> pblock)
 {
+    auto event = g_event_logger->time_event("ActivateBestChain");
+
     AssertLockNotHeld(m_chainstate_mutex);
 
     // Note that while we're often called here from ProcessNewBlock, this is
@@ -3608,6 +3610,10 @@ bool Chainstate::ActivateBestChain(BlockValidationState& state, std::shared_ptr<
             // Notify external listeners about the new tip, even if pindexFork == pindexNewTip.
             if (m_chainman.m_options.signals && this == &m_chainman.ActiveChainstate()) {
                 m_chainman.m_options.signals->ActiveTipChange(*Assert(pindexNewTip), m_chainman.IsInitialBlockDownload());
+                event.add_metadata(
+                    "new=" + pindexNewTip->GetBlockHash().ToString());
+                event.add_metadata(
+                    strprintf("height=%d", pindexNewTip->nHeight));
             }
         } // release cs_main
         // When we reach this point, we switched to a new tip (stored in pindexNewTip).
