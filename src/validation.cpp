@@ -2833,6 +2833,7 @@ bool Chainstate::FlushStateToDisk(
     bool full_flush_completed = false;
 
     auto event = g_event_logger->time_event("FS");
+    event.m_canceled = true;  // don't log unless full flush
 
     const size_t coins_count = CoinsTip().GetCacheSize();
     const size_t coins_mem_usage = CoinsTip().DynamicMemoryUsage();
@@ -2904,9 +2905,8 @@ bool Chainstate::FlushStateToDisk(
         // Combine all conditions that result in a full cache flush.
         fDoFullFlush = (mode == FlushStateMode::ALWAYS) || fCacheLarge || fCacheCritical || fPeriodicFlush || fFlushForPrune;
         if (fDoFullFlush) {
+            event.m_canceled = false;
             event.add_metadata("full=1");
-        } else {
-            event.add_metadata("full=0");
         }
         // Write blocks and block index to disk.
         if (fDoFullFlush || fPeriodicWrite) {

@@ -125,6 +125,9 @@ public:
         }
 
         ~ScopedEvent() {
+            if (m_canceled) {
+                return;
+            }
             auto end_time = std::chrono::steady_clock::now().time_since_epoch();
             m_logger.log_event(
                 m_label,
@@ -133,6 +136,8 @@ public:
                 m_metadata
             );
         }
+
+        bool m_canceled{false};
 
     private:
         EventLogger& m_logger;
