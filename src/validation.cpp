@@ -2449,7 +2449,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     AssertLockHeld(cs_main);
     assert(pindex);
 
-    auto event = g_event_logger->time_event("CoB");
+    auto event = g_event_logger->time_event("ConnectBlock");
 
     uint256 block_hash{block.GetHash()};
     assert(*pindex->phashBlock == block_hash);

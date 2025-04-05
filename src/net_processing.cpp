@@ -4589,6 +4589,8 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
 
     if (msg_type == NetMsgType::BLOCK)
     {
+        auto event = g_event_logger->time_event("BLOCK");
+
         // Ignore block received while importing
         if (m_chainman.m_blockman.LoadingBlocks()) {
             LogDebug(BCLog::NET, "Unexpected block message received from peer %d\n", pfrom.GetId());
@@ -4597,6 +4599,8 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
 
         std::shared_ptr<CBlock> pblock = std::make_shared<CBlock>();
         vRecv >> TX_WITH_WITNESS(*pblock);
+
+        event.add_metadata("blockhash="+pblock->GetHash().ToString());
 
         LogDebug(BCLog::NET, "received block %s peer=%d\n", pblock->GetHash().ToString(), pfrom.GetId());
 
