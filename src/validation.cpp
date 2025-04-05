@@ -2169,14 +2169,13 @@ bool CheckInputScripts(const CTransaction& tx, TxValidationState& state,
 {
     if (tx.IsCoinBase()) return true;
 
-    std::string eventname = "CheckInputScripts-sync";
-    if (pvChecks) {
-        eventname = "CheckInputScripts-async";
-    }
-    auto event = g_event_logger->time_event(eventname);
+    auto event = g_event_logger->time_event("CIS");
 
     if (pvChecks) {
         pvChecks->reserve(tx.vin.size());
+        event.add_metadata("sync=0");
+    } else {
+        event.add_metadata("sync=1");
     }
 
     // First check if script executions have been cached with the same
@@ -2910,9 +2909,9 @@ bool Chainstate::FlushStateToDisk(
         // Combine all conditions that result in a full cache flush.
         fDoFullFlush = (mode == FlushStateMode::ALWAYS) || fCacheLarge || fCacheCritical || fPeriodicFlush || fFlushForPrune;
         if (fDoFullFlush) {
-            event.add_metadata("fullflush=1");
+            event.add_metadata("full=1");
         } else {
-            event.add_metadata("fullflush=0");
+            event.add_metadata("full=0");
         }
         // Write blocks and block index to disk.
         if (fDoFullFlush || fPeriodicWrite) {
