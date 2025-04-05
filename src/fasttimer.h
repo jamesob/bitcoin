@@ -183,8 +183,9 @@ private:
     // Write all events in a buffer to the output file
     void flush_buffer(const std::vector<EventData>& buffer) {
         for (const auto& event : buffer) {
+            auto dur = event.end_time - event.start_time;
             m_output_stream << event.start_time.count() << ","
-                           << event.end_time.count() << ","
+                           << dur.count() << ","
                            << event.label << ","
                            << event.metadata << "\n";
         }

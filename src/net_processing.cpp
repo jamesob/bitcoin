@@ -4325,7 +4325,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         }
 
         if (received_new_header) {
-            auto event = g_event_logger->time_event("CMPCTBLOCK");
+            auto event = g_event_logger->time_event("CB");
             event.add_metadata("blockhash="+blockhash.ToString());
             LogInfo("Saw new cmpctblock header hash=%s peer=%d\n",
                 blockhash.ToString(), pfrom.GetId());
@@ -4531,7 +4531,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
 
     if (msg_type == NetMsgType::BLOCKTXN)
     {
-        auto event = g_event_logger->time_event("BLOCKTXN");
+        auto event = g_event_logger->time_event("BT");
 
         // Ignore blocktxn received while importing
         if (m_chainman.m_blockman.LoadingBlocks()) {

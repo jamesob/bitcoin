@@ -2450,11 +2450,13 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
     AssertLockHeld(cs_main);
     assert(pindex);
 
-    auto event = g_event_logger->time_event("ConnectBlock");
+    auto event = g_event_logger->time_event("CoB");
 
     uint256 block_hash{block.GetHash()};
     assert(*pindex->phashBlock == block_hash);
     const bool parallel_script_checks{m_chainman.GetCheckQueue().HasThreads()};
+
+    event.add_metadata("blockhash="+block_hash.ToString());
 
     const auto time_start{SteadyClock::now()};
     const CChainParams& params{m_chainman.GetParams()};
@@ -2836,7 +2838,7 @@ bool Chainstate::FlushStateToDisk(
     std::set<int> setFilesToPrune;
     bool full_flush_completed = false;
 
-    auto event = g_event_logger->time_event("FlushStateToDisk");
+    auto event = g_event_logger->time_event("FS");
 
     const size_t coins_count = CoinsTip().GetCacheSize();
     const size_t coins_mem_usage = CoinsTip().DynamicMemoryUsage();
@@ -2907,6 +2909,11 @@ bool Chainstate::FlushStateToDisk(
         bool fPeriodicFlush = mode == FlushStateMode::PERIODIC && nNow > m_last_flush + DATABASE_FLUSH_INTERVAL;
         // Combine all conditions that result in a full cache flush.
         fDoFullFlush = (mode == FlushStateMode::ALWAYS) || fCacheLarge || fCacheCritical || fPeriodicFlush || fFlushForPrune;
+        if (fDoFullFlush) {
+            event.add_metadata("fullflush=1");
+        } else {
+            event.add_metadata("fullflush=0");
+        }
         // Write blocks and block index to disk.
         if (fDoFullFlush || fPeriodicWrite) {
             // Ensure we can write block index
