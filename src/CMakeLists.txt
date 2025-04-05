@@ -177,6 +177,7 @@ add_library(bitcoin_common STATIC EXCLUDE_FROM_ALL
   script/sign.cpp
   script/signingprovider.cpp
   script/solver.cpp
+  fasttimer.cpp
 )
 target_link_libraries(bitcoin_common
   PRIVATE

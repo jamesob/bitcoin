@@ -3,6 +3,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include "fasttimer.h"
 #include <net_processing.h>
 
 #include <addrman.h>
@@ -4324,6 +4325,8 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         }
 
         if (received_new_header) {
+            auto event = g_event_logger->time_event("CMPCTBLOCK");
+            event.add_metadata("blockhash="+blockhash.ToString());
             LogInfo("Saw new cmpctblock header hash=%s peer=%d\n",
                 blockhash.ToString(), pfrom.GetId());
         }
@@ -4528,6 +4531,8 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
 
     if (msg_type == NetMsgType::BLOCKTXN)
     {
+        auto event = g_event_logger->time_event("BLOCKTXN");
+
         // Ignore blocktxn received while importing
         if (m_chainman.m_blockman.LoadingBlocks()) {
             LogDebug(BCLog::NET, "Unexpected blocktxn message received from peer %d\n", pfrom.GetId());
@@ -4537,6 +4542,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         BlockTransactions resp;
         vRecv >> resp;
 
+        event.add_metadata("blockhash="+resp.blockhash.ToString());
         return ProcessCompactBlockTxns(pfrom, *peer, resp);
     }
 

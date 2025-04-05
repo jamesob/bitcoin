@@ -3,6 +3,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include <fasttimer.h>
 #include <bitcoin-build-config.h> // IWYU pragma: keep
 
 #include <init.h>
@@ -397,6 +398,8 @@ void Shutdown(NodeContext& node)
     node.kernel.reset();
 
     RemovePidFile(*node.args);
+
+    ShutdownEventLogger();
 
     LogPrintf("%s: done\n", __func__);
 }
@@ -1363,6 +1366,8 @@ bool AppInitMain(NodeContext& node, interfaces::BlockAndHeaderTipInfo* tip_info)
                   "also be data loss if bitcoin is started while in a temporary directory.\n",
                   args.GetArg("-datadir", ""), fs::PathToString(fs::current_path()));
     }
+
+    InitEventLogger(args.GetDataDirBase() / "event_log.csv");
 
     assert(!node.scheduler);
     node.scheduler = std::make_unique<CScheduler>();

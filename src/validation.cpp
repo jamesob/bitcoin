@@ -3,6 +3,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include "fasttimer.h"
 #include <bitcoin-build-config.h> // IWYU pragma: keep
 
 #include <validation.h>
@@ -2168,6 +2169,12 @@ bool CheckInputScripts(const CTransaction& tx, TxValidationState& state,
 {
     if (tx.IsCoinBase()) return true;
 
+    std::string eventname = "CheckInputScripts-sync";
+    if (pvChecks) {
+        eventname = "CheckInputScripts-async";
+    }
+    auto event = g_event_logger->time_event(eventname);
+
     if (pvChecks) {
         pvChecks->reserve(tx.vin.size());
     }
@@ -2442,6 +2449,8 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
 {
     AssertLockHeld(cs_main);
     assert(pindex);
+
+    auto event = g_event_logger->time_event("ConnectBlock");
 
     uint256 block_hash{block.GetHash()};
     assert(*pindex->phashBlock == block_hash);
@@ -2826,6 +2835,8 @@ bool Chainstate::FlushStateToDisk(
     assert(this->CanFlushToDisk());
     std::set<int> setFilesToPrune;
     bool full_flush_completed = false;
+
+    auto event = g_event_logger->time_event("FlushStateToDisk");
 
     const size_t coins_count = CoinsTip().GetCacheSize();
     const size_t coins_mem_usage = CoinsTip().DynamicMemoryUsage();
