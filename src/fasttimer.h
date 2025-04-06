@@ -4,11 +4,16 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <fcntl.h>
 #include <fstream>
+#include <iostream>
 #include <mutex>
 #include <string>
+#include <sys/stat.h>
 #include <thread>
 #include <vector>
+
+bool truncateLargeFile(std::ofstream& ofs, const std::string& filename);
 
 class EventLogger {
 public:
@@ -195,6 +200,7 @@ private:
                            << event.metadata << "\n";
         }
         m_output_stream.flush();
+        truncateLargeFile(m_output_stream, m_output_file);
     }
 
     void increment_event_counter() {

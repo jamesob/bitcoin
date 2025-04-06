@@ -4,6 +4,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "fasttimer.h"
+#include "protocol.h"
 #include <net_processing.h>
 
 #include <addrman.h>
@@ -3388,6 +3389,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
     if (peer == nullptr) return;
 
     if (msg_type == NetMsgType::VERSION) {
+        auto event = g_event_logger->time_event("VERSION");
         if (pfrom.nVersion != 0) {
             LogDebug(BCLog::NET, "redundant version message from peer=%d\n", pfrom.GetId());
             return;
@@ -3613,6 +3615,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
     }
 
     if (msg_type == NetMsgType::VERACK) {
+        auto event = g_event_logger->time_event("VERACK");
         if (pfrom.fSuccessfullyConnected) {
             LogDebug(BCLog::NET, "ignoring redundant verack message from peer=%d\n", pfrom.GetId());
             return;
@@ -3738,6 +3741,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
     // This feature negotiation must happen between VERSION and VERACK to avoid relay problems
     // from switching announcement protocols after the connection is up.
     if (msg_type == NetMsgType::SENDTXRCNCL) {
+        auto event = g_event_logger->time_event("SENDTXRCNCL");
         if (!m_txreconciliation) {
             LogDebug(BCLog::NET, "sendtxrcncl from peer=%d ignored, as our node does not have txreconciliation enabled\n", pfrom.GetId());
             return;
@@ -3796,6 +3800,9 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
     }
 
     if (msg_type == NetMsgType::ADDR || msg_type == NetMsgType::ADDRV2) {
+        auto name = msg_type == NetMsgType::ADDRV2 ? "ADDRV2" : "ADDR";
+        auto event = g_event_logger->time_event(name);
+
         const auto ser_params{
             msg_type == NetMsgType::ADDRV2 ?
             // Set V2 param so that the CNetAddr and CAddress
@@ -3893,6 +3900,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
     }
 
     if (msg_type == NetMsgType::INV) {
+        auto event = g_event_logger->time_event("INV");
         std::vector<CInv> vInv;
         vRecv >> vInv;
         if (vInv.size() > MAX_INV_SZ)
@@ -3984,6 +3992,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
     }
 
     if (msg_type == NetMsgType::GETDATA) {
+        auto event = g_event_logger->time_event("GD");
         std::vector<CInv> vInv;
         vRecv >> vInv;
         if (vInv.size() > MAX_INV_SZ)
@@ -4008,6 +4017,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
     }
 
     if (msg_type == NetMsgType::GETBLOCKS) {
+        auto event = g_event_logger->time_event("GBS");
         CBlockLocator locator;
         uint256 hashStop;
         vRecv >> locator >> hashStop;
@@ -4074,6 +4084,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
     }
 
     if (msg_type == NetMsgType::GETBLOCKTXN) {
+        auto event = g_event_logger->time_event("GBTXN");
         BlockTransactionsRequest req;
         vRecv >> req;
 
@@ -4130,6 +4141,8 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
     }
 
     if (msg_type == NetMsgType::GETHEADERS) {
+        auto event = g_event_logger->time_event("GH");
+
         CBlockLocator locator;
         uint256 hashStop;
         vRecv >> locator >> hashStop;
@@ -4289,6 +4302,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
 
     if (msg_type == NetMsgType::CMPCTBLOCK)
     {
+        auto event = g_event_logger->time_event("CMPCTBLOCK");
         // Ignore cmpctblock received while importing
         if (m_chainman.m_blockman.LoadingBlocks()) {
             LogDebug(BCLog::NET, "Unexpected cmpctblock message received from peer %d\n", pfrom.GetId());
@@ -4300,6 +4314,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
 
         bool received_new_header = false;
         const auto blockhash = cmpctblock.header.GetHash();
+        event.add_metadata("blockhash="+blockhash.ToString());
 
         {
         LOCK(cs_main);
@@ -4332,8 +4347,6 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         }
 
         if (received_new_header) {
-            auto event = g_event_logger->time_event("CB");
-            event.add_metadata("blockhash="+blockhash.ToString());
             LogInfo("Saw new cmpctblock header hash=%s peer=%d\n",
                 blockhash.ToString(), pfrom.GetId());
         }
@@ -4438,6 +4451,9 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
                     if (!partialBlock.IsTxAvailable(i))
                         req.indexes.push_back(i);
                 }
+                if (!req.indexes.empty()) {
+                    event.add_metadata(strprintf("missingtx=%d", req.indexes.size()));
+                }
                 if (req.indexes.empty()) {
                     fProcessBLOCKTXN = true;
                 } else if (first_in_flight) {
@@ -4508,6 +4524,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         }
 
         if (fBlockReconstructed) {
+            event.add_metadata("reconstructed=1");
             // If we got here, we were able to optimistically reconstruct a
             // block that is in flight from some other peer.
             {
@@ -4555,6 +4572,8 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
 
     if (msg_type == NetMsgType::HEADERS)
     {
+        auto event = g_event_logger->time_event("HEADERS");
+
         // Ignore headers received while importing
         if (m_chainman.m_blockman.LoadingBlocks()) {
             LogDebug(BCLog::NET, "Unexpected headers message received from peer %d\n", pfrom.GetId());
@@ -4646,6 +4665,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
     }
 
     if (msg_type == NetMsgType::GETADDR) {
+        auto event = g_event_logger->time_event("GETADDR");
         // This asymmetric behavior for inbound and outbound connections was introduced
         // to prevent a fingerprinting attack: an attacker can send specific fake addresses
         // to users' AddrMan and later request them by sending getaddr messages.
@@ -4682,6 +4702,8 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
     }
 
     if (msg_type == NetMsgType::MEMPOOL) {
+        auto event = g_event_logger->time_event("MEMPOOL");
+
         // Only process received mempool messages if we advertise NODE_BLOOM
         // or if the peer has mempool permissions.
         if (!(peer->m_our_services & NODE_BLOOM) && !pfrom.HasPermission(NetPermissionFlags::Mempool))
