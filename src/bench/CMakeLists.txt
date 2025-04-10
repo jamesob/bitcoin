@@ -12,6 +12,7 @@ add_executable(bench_bitcoin
   bech32.cpp
   bip324_ecdh.cpp
   block_assemble.cpp
+  bigutxo.cpp
   ccoins_caching.cpp
   chacha20.cpp
   checkblock.cpp
