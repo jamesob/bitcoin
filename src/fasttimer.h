@@ -197,10 +197,9 @@ private:
             m_output_stream << event.start_time.count() << ","
                            << dur.count() << ","
                            << event.label << ","
-                           << event.metadata << "\n";
+                           << "\"" << event.metadata << "\"\n";
         }
         m_output_stream.flush();
-        truncateLargeFile(m_output_stream, m_output_file);
     }
 
     void increment_event_counter() {

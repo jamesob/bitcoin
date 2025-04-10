@@ -3902,6 +3902,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
     if (msg_type == NetMsgType::INV) {
         auto event = g_event_logger->time_event("INV");
         std::vector<CInv> vInv;
+        event.add_metadata(strprintf("size_bytes=%d", vRecv.size()));
         vRecv >> vInv;
         if (vInv.size() > MAX_INV_SZ)
         {
@@ -4224,6 +4225,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
 
     if (msg_type == NetMsgType::TX) {
         auto event = g_event_logger->time_event("TX");
+        event.add_metadata(strprintf("size_bytes=%d", vRecv.size()));
 
         if (RejectIncomingTxs(pfrom)) {
             LogDebug(BCLog::NET, "transaction sent in violation of protocol, %s", pfrom.DisconnectMsg(fLogIPs));
@@ -4242,6 +4244,8 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
 
         const uint256& txid = ptx->GetHash();
         const uint256& wtxid = ptx->GetWitnessHash();
+
+        event.add_metadata("tx=" + txid.ToString());
 
         const uint256& hash = peer->m_wtxid_relay ? wtxid : txid;
         AddKnownTx(*peer, hash);
@@ -4310,6 +4314,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         }
 
         CBlockHeaderAndShortTxIDs cmpctblock;
+        event.add_metadata(strprintf("size_bytes=%d", vRecv.size()));
         vRecv >> cmpctblock;
 
         bool received_new_header = false;
@@ -4556,6 +4561,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
     if (msg_type == NetMsgType::BLOCKTXN)
     {
         auto event = g_event_logger->time_event("BT");
+        event.add_metadata(strprintf("size_bytes=%d", vRecv.size()));
 
         // Ignore blocktxn received while importing
         if (m_chainman.m_blockman.LoadingBlocks()) {
@@ -4573,6 +4579,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
     if (msg_type == NetMsgType::HEADERS)
     {
         auto event = g_event_logger->time_event("HEADERS");
+        event.add_metadata(strprintf("size_bytes=%d", vRecv.size()));
 
         // Ignore headers received while importing
         if (m_chainman.m_blockman.LoadingBlocks()) {
@@ -4616,6 +4623,7 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
     if (msg_type == NetMsgType::BLOCK)
     {
         auto event = g_event_logger->time_event("BLOCK");
+        event.add_metadata(strprintf("size_bytes=%d", vRecv.size()));
 
         // Ignore block received while importing
         if (m_chainman.m_blockman.LoadingBlocks()) {

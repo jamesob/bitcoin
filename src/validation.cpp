@@ -2617,6 +2617,16 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
         }
     }
 
+    std::string txids{};
+
+    for (const auto& tx : block.vtx) {
+        if (txids.size() > 0) {
+            txids += ",";
+        }
+        txids += tx->GetHash().ToString();
+    }
+    event.add_metadata("txids=" + txids);
+
     // Enforce BIP68 (sequence locks)
     int nLockTimeFlags = 0;
     if (DeploymentActiveAt(*pindex, m_chainman, Consensus::DEPLOYMENT_CSV)) {
