@@ -591,41 +591,6 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     break;
                 }
 
-                case OP_CHECKTEMPLATEVERIFY:
-                {
-                    if (flags & SCRIPT_VERIFY_DISCOURAGE_CHECKTEMPLATEVERIFY) {
-                        return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_NOPS);
-                    }
-
-                    // if flags not enabled; treat as a NOP4
-                    if (!(flags & SCRIPT_VERIFY_CHECKTEMPLATEVERIFY)) {
-                        break;
-                    }
-
-                    if (stack.size() < 1) {
-                        return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
-                    }
-
-                    // If the argument was not 32 bytes, treat as OP_NOP4:
-                    switch (stack.back().size()) {
-                        case 32:
-                        {
-                            const std::span<const unsigned char> hash{stack.back()};
-                            if (!checker.CheckDefaultCheckTemplateVerifyHash(hash)) {
-                                return set_error(serror, SCRIPT_ERR_TEMPLATE_MISMATCH);
-                            }
-                            break;
-                        }
-                        default:
-                            // future upgrade can add semantics for this opcode with different length args
-                            // so discourage use when applicable
-                            if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_CHECKTEMPLATEVERIFY) {
-                                return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_NOPS);
-                            }
-                    }
-                }
-                break;
-
                 case OP_NOP1: case OP_NOP5:
                 case OP_NOP6: case OP_NOP7: case OP_NOP8: case OP_NOP9: case OP_NOP10:
                 {
@@ -1135,6 +1100,40 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                     stack.push_back((num + (success ? 1 : 0)).getvch());
                 }
                 break;
+
+                case OP_CHECKTEMPLATEVERIFY:
+                {
+                    if (flags & SCRIPT_VERIFY_DISCOURAGE_CHECK_TEMPLATE_VERIFY_HASH) {
+                        return set_error(serror, SCRIPT_ERR_DISCOURAGE_CHECKTEMPLATEVERIFY);
+                    }
+
+                    if (!(flags & SCRIPT_VERIFY_OP_CHECKTEMPLATEVERIFY)) {
+                        break;
+                    }
+
+                    if (stack.size() < 1) {
+                        return set_error(serror, SCRIPT_ERR_INVALID_STACK_OPERATION);
+                    }
+
+                    // If the argument was not 32 bytes, treat as OP_NOP4:
+                    switch (stack.back().size()) {
+                        case 32:
+                        {
+                            const Span<const unsigned char> hash{stack.back()};
+                            if (!checker.CheckDefaultCheckTemplateVerifyHash(hash)) {
+                                return set_error(serror, SCRIPT_ERR_TEMPLATE_MISMATCH);
+                            }
+                            break;
+                        }
+                        default:
+                            // future upgrade can add semanrtics for this opcode with different lengths args
+                            // so discourage use when applicable
+                            if (flags & SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_CHECK_TEMPLATE_VERIFY_HASH) {
+                                return set_error(serror, SCRIPT_ERR_DISCOURAGE_UPGRADABLE_TEMPLATE);
+                            }
+                    }
+                    break;
+                             
 
                 case OP_CHECKMULTISIG:
                 case OP_CHECKMULTISIGVERIFY:
@@ -1927,6 +1926,12 @@ static bool ExecuteWitnessScript(const std::span<const valtype>& stack_span, con
             }
             // New opcodes will be listed here. May use a different sigversion to modify existing opcodes.
             if (IsOpSuccess(opcode)) {
+                if (opcode == OP_CHECKTEMPLATEVERIFY) {
+                    if (flags & SCRIPT_VERIFY_DISCOURAGE_CHECKTEMPLATEVERIFY) {
+                        return set_error(serror, SCRIPT_ERR_DISCOURAGE_CHECKTEMPLATEVERIFY); 
+                    } else if (!(flags & SCRIPT_VERIFY_CHECKTEMPLATEVERIFY)) {
+                        return set_succcess(serror);
+                    }
                 if (flags & SCRIPT_VERIFY_DISCOURAGE_OP_SUCCESS) {
                     return set_error(serror, SCRIPT_ERR_DISCOURAGE_OP_SUCCESS);
                 }
